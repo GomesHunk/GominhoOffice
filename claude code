@@ -1,0 +1,685 @@
+import streamlit as st
+import requests
+from bs4 import BeautifulSoup
+import re
+import os
+import zipfile
+from io import BytesIO
+import time
+from datetime import datetime
+
+# Configuração da página com tema customizado
+st.set_page_config(
+    page_title="🔍 TechnipFMC - Legacy Drawing Searcher", 
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# CSS customizado com identidade visual TechnipFMC
+st.markdown("""
+<style>
+    /* Paleta de cores TechnipFMC */
+    :root {
+        --technip-red: #E31E24;
+        --technip-purple: #662D91;
+        --technip-blue: #1E88E5;
+        --technip-teal: #009688;
+        --technip-dark-blue: #0D47A1;
+        --technip-light-gray: #F5F7FA;
+        --technip-dark-gray: #37474F;
+        --technip-white: #FFFFFF;
+    }
+    
+    /* Reset padrão do Streamlit */
+    .stApp {
+        background: linear-gradient(135deg, var(--technip-light-gray) 0%, #E3F2FD 100%);
+    }
+    
+    /* Header principal */
+    .main-header {
+        background: linear-gradient(135deg, var(--technip-red) 0%, var(--technip-purple) 50%, var(--technip-blue) 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 15px;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .main-header::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/><circle cx="25" cy="75" r="1" fill="white" opacity="0.05"/><circle cx="75" cy="25" r="1" fill="white" opacity="0.05"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+        pointer-events: none;
+    }
+    
+    .logo-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .technip-logo {
+        font-size: 2.5rem;
+        font-weight: 800;
+        letter-spacing: -1px;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    .header-subtitle {
+        font-size: 1.2rem;
+        font-weight: 300;
+        opacity: 0.9;
+        margin-top: 0.5rem;
+        position: relative;
+        z-index: 1;
+    }
+    
+    /* Cards de conteúdo */
+    .content-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        border-left: 4px solid var(--technip-blue);
+        transition: all 0.3s ease;
+    }
+    
+    .content-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+    }
+    
+    /* Seção de input */
+    .input-section {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        margin: 1rem 0;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        border-top: 3px solid var(--technip-teal);
+    }
+    
+    /* Botões customizados */
+    .stButton > button {
+        background: linear-gradient(135deg, var(--technip-blue) 0%, var(--technip-teal) 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.6rem 1.5rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(30, 136, 229, 0.3);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(30, 136, 229, 0.4);
+        background: linear-gradient(135deg, var(--technip-teal) 0%, var(--technip-blue) 100%);
+    }
+    
+    /* Botão secundário */
+    .secondary-button > button {
+        background: transparent;
+        color: var(--technip-dark-gray);
+        border: 2px solid var(--technip-dark-gray);
+        border-radius: 8px;
+        font-weight: 500;
+    }
+    
+    .secondary-button > button:hover {
+        background: var(--technip-dark-gray);
+        color: white;
+    }
+    
+    /* Botão de parar */
+    .stop-button > button {
+        background: linear-gradient(135deg, var(--technip-red) 0%, #FF5722 100%);
+        color: white;
+        border: none;
+    }
+    
+    .stop-button > button:hover {
+        background: linear-gradient(135deg, #FF5722 0%, var(--technip-red) 100%);
+    }
+    
+    /* Alertas e mensagens */
+    .stSuccess {
+        background: linear-gradient(135deg, #4CAF50 0%, var(--technip-teal) 100%);
+        color: white;
+        border-radius: 8px;
+        padding: 1rem;
+        border: none;
+    }
+    
+    .stWarning {
+        background: linear-gradient(135deg, #FF9800 0%, #FFB74D 100%);
+        border-radius: 8px;
+        border: none;
+    }
+    
+    .stError {
+        background: linear-gradient(135deg, var(--technip-red) 0%, #F44336 100%);
+        color: white;
+        border-radius: 8px;
+        border: none;
+    }
+    
+    /* Spinner customizado */
+    .stSpinner {
+        color: var(--technip-blue);
+    }
+    
+    /* Seção de resultados */
+    .result-section {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        border-left: 4px solid var(--technip-teal);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    
+    .result-header {
+        color: var(--technip-dark-blue);
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .result-item {
+        background: var(--technip-light-gray);
+        padding: 0.8rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        border-left: 3px solid var(--technip-blue);
+    }
+    
+    /* Status indicators */
+    .status-indicator {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    
+    .status-searching {
+        background: linear-gradient(45deg, var(--technip-blue), var(--technip-teal));
+        animation: pulse 1.5s infinite;
+    }
+    
+    .status-success {
+        background: #4CAF50;
+    }
+    
+    .status-error {
+        background: var(--technip-red);
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(1.1); }
+    }
+    
+    /* Footer */
+    .footer {
+        background: var(--technip-dark-gray);
+        color: white;
+        text-align: center;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-top: 3rem;
+        font-size: 0.9rem;
+    }
+    
+    /* Input customizado */
+    .stTextInput > div > div > input {
+        border-radius: 8px;
+        border: 2px solid #E0E0E0;
+        padding: 0.7rem;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: var(--technip-blue);
+        box-shadow: 0 0 0 3px rgba(30, 136, 229, 0.1);
+    }
+    
+    /* Métricas */
+    .metric-card {
+        background: white;
+        border-radius: 10px;
+        padding: 1rem;
+        text-align: center;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        border-top: 3px solid var(--technip-purple);
+    }
+    
+    /* Barra de progresso customizada */
+    .progress-container {
+        background: #E0E0E0;
+        border-radius: 10px;
+        height: 8px;
+        margin: 1rem 0;
+        overflow: hidden;
+    }
+    
+    .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, var(--technip-blue) 0%, var(--technip-teal) 100%);
+        border-radius: 10px;
+        transition: width 0.3s ease;
+    }
+
+    /* Histórico de buscas */
+    .history-item {
+        background: white;
+        padding: 0.8rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-left: 3px solid var(--technip-purple);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    
+    .history-code {
+        font-family: 'Courier New', monospace;
+        font-weight: 600;
+        color: var(--technip-dark-blue);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Funções originais (mantidas)
+def format_drawing_code_desativados(drawing_code):
+    parts = drawing_code.split('-')
+    formatted_parts = [parts[0].zfill(3)] + parts[1:]
+    return '-'.join(formatted_parts)
+
+def format_drawing_code_fmc(drawing_code):
+    return drawing_code
+
+def get_latest_drawing_urls(base_url, drawing_code):
+    drawing_code = format_drawing_code_desativados(drawing_code)
+    parts = drawing_code.split('-')
+    if len(parts) != 3:
+        raise ValueError("Formato inválido. Use: 'xxx-xxx-xxx'")
+
+    response = requests.get(base_url, timeout=15)
+    if response.status_code != 200:
+        raise Exception(f"Erro ao acessar a pasta raiz: {base_url}")
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    # Primeiro nível
+    first_level_pattern = re.compile(f"^{parts[0]}\\b.*")
+    first_level_folder = next((link['href'] for link in soup.find_all('a', href=True)
+                               if first_level_pattern.match(link.text.strip('/'))), None)
+    if not first_level_folder:
+        raise Exception(f"Nenhuma pasta encontrada para o prefixo: {parts[0]}")
+    first_level_url = base_url.rstrip('/') + '/' + first_level_folder
+
+    # Segundo nível
+    response = requests.get(first_level_url, timeout=15)
+    if response.status_code != 200:
+        raise Exception(f"Erro ao acessar a subpasta: {first_level_url}")
+    soup = BeautifulSoup(response.content, 'html.parser')
+    second_level_pattern = re.compile(f"^{parts[0]}-{parts[1]}\\b.*")
+    second_level_folder = next((link['href'] for link in soup.find_all('a', href=True)
+                                if second_level_pattern.match(link.text.strip('/'))), None)
+    if not second_level_folder:
+        raise Exception(f"Nenhuma subpasta encontrada para: {parts[0]}-{parts[1]}")
+    second_level_url = first_level_url.rstrip('/') + '/' + second_level_folder
+
+    # Arquivos
+    response = requests.get(second_level_url, timeout=15)
+    if response.status_code != 200:
+        raise Exception(f"Erro ao acessar a subpasta final: {second_level_url}")
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    file_pattern = re.compile(f"{drawing_code}(-\\d+)?-([A-Z])\\.tif$")
+    file_links = [link['href'] for link in soup.find_all('a', href=True) if file_pattern.match(link['href'])]
+
+    if not file_links:
+        raise Exception(f"Nenhum arquivo encontrado para: {drawing_code}")
+
+    # Agrupar por revisão
+    grouped = {}
+    for file in file_links:
+        match = re.search(rf"{drawing_code}(-\d+)?-([A-Z])\.tif$", file)
+        if match:
+            revision = match.group(2)
+            if revision not in grouped:
+                grouped[revision] = []
+            grouped[revision].append(second_level_url.rstrip('/') + '/' + file)
+
+    latest_revision = sorted(grouped.keys(), reverse=True)[0]
+    return grouped[latest_revision], latest_revision
+
+def get_latest_drawing_paths(base_path, drawing_code, format_code_func):
+    drawing_code = format_code_func(drawing_code)
+    parts = drawing_code.split('-')
+    if len(parts) < 2:
+        raise ValueError("Formato inválido. Use: 'xxx-xxx' ou 'xxx-xxx-xxx'")
+
+    file_pattern = re.compile(f"{drawing_code}(-\\d+)?-?([A-Z])?\\.tif$")
+    found_files = []
+
+    for root, dirs, files in os.walk(base_path):
+        for file in files:
+            if file_pattern.search(file):
+                found_files.append(os.path.join(root, file))
+
+    if not found_files:
+        raise Exception(f"Nenhum arquivo encontrado para: {drawing_code}")
+
+    return found_files
+
+def group_files_by_version_and_page(files):
+    grouped_files = {}
+    for file in files:
+        match = re.search(r'-(\d+)?-?([A-Z])?\.', file)
+        if match:
+            page = match.group(1) if match.group(1) else 'single'
+            version = match.group(2) if match.group(2) else ''
+            if version not in grouped_files:
+                grouped_files[version] = {}
+            if page not in grouped_files[version]:
+                grouped_files[version][page] = []
+            grouped_files[version][page].append(file)
+    return grouped_files
+
+def create_zip(files):
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as zip_file:
+        for file in files:
+            zip_file.write(file, os.path.basename(file))
+    buffer.seek(0)
+    return buffer
+
+def create_zip_from_urls(urls):
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as zip_file:
+        for url in urls:
+            response = requests.get(url, timeout=30)
+            if response.status_code == 200:
+                filename = url.split('/')[-1]
+                zip_file.writestr(filename, response.content)
+    buffer.seek(0)
+    return buffer
+
+# Header principal
+st.markdown("""
+<div class="main-header">
+    <div class="logo-container">
+        <div class="technip-logo">TechnipFMC</div>
+    </div>
+    <div class="header-subtitle">Legacy Technical Drawing Searcher</div>
+    <div style="font-size: 0.9rem; margin-top: 1rem; opacity: 0.8;">
+        🔍 Busca inteligente • 📁 Múltiplas fontes • ⚡ Download rápido
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Inicialização do session state
+if "drawing_code" not in st.session_state:
+    st.session_state.drawing_code = ""
+if "stop_search" not in st.session_state:
+    st.session_state.stop_search = False
+if "search_history" not in st.session_state:
+    st.session_state.search_history = []
+if "search_stats" not in st.session_state:
+    st.session_state.search_stats = {"total_searches": 0, "successful_searches": 0}
+
+# Seção de input
+with st.container():
+    st.markdown('<div class="input-section">', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        st.markdown("### 📋 Código do Desenho")
+        drawing_code = st.text_input(
+            "Digite o código do desenho técnico:",
+            value=st.session_state.drawing_code,
+            placeholder="Ex: 180-570-542",
+            help="Formato aceito: xxx-xxx-xxx (números separados por hífen)"
+        )
+    
+    with col2:
+        st.markdown("### ⚙️ Controles")
+        st.write("")  # Espaçamento
+        
+        col_btn1, col_btn2, col_btn3 = st.columns(3)
+        
+        with col_btn1:
+            search_btn = st.button("🔍 Buscar", use_container_width=True)
+        
+        with col_btn2:
+            clear_btn = st.button("🗑️ Limpar", use_container_width=True)
+            if clear_btn:
+                st.session_state.drawing_code = ""
+                st.rerun()
+        
+        with col_btn3:
+            st.markdown('<div class="stop-button">', unsafe_allow_html=True)
+            stop_btn = st.button("⏹️ Parar", use_container_width=True)
+            if stop_btn:
+                st.session_state.stop_search = True
+            st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Estatísticas rápidas
+if st.session_state.search_stats["total_searches"] > 0:
+    with st.container():
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric(
+                label="📊 Total de Buscas",
+                value=st.session_state.search_stats["total_searches"]
+            )
+        
+        with col2:
+            st.metric(
+                label="✅ Buscas Bem-sucedidas",
+                value=st.session_state.search_stats["successful_searches"]
+            )
+        
+        with col3:
+            success_rate = (st.session_state.search_stats["successful_searches"] / 
+                          st.session_state.search_stats["total_searches"]) * 100
+            st.metric(
+                label="📈 Taxa de Sucesso",
+                value=f"{success_rate:.1f}%"
+            )
+
+# Validação de entrada
+if drawing_code and not re.match(r'^\d{1,3}-\d{1,3}(-\d{1,3})?$', drawing_code):
+    st.error("❌ Formato inválido! Use: xxx-xxx ou xxx-xxx-xxx (apenas números e hífens)")
+    search_btn = False
+
+# Lógica de busca
+if search_btn and drawing_code:
+    st.session_state.drawing_code = drawing_code
+    st.session_state.stop_search = False
+    
+    # Atualizar estatísticas
+    st.session_state.search_stats["total_searches"] += 1
+    search_successful = False
+    
+    # Adicionar ao histórico
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    search_entry = {"code": drawing_code, "timestamp": timestamp, "found": False}
+    
+    if drawing_code not in [entry["code"] for entry in st.session_state.search_history]:
+        st.session_state.search_history.insert(0, search_entry)
+        if len(st.session_state.search_history) > 10:
+            st.session_state.search_history.pop()
+    
+    # Status de busca
+    search_status = st.empty()
+    
+    # Busca na web
+    with st.container():
+        st.markdown('<div class="result-section">', unsafe_allow_html=True)
+        
+        search_status.markdown("""
+        <div style="display: flex; align-items: center; padding: 1rem; background: #E3F2FD; border-radius: 8px; margin: 1rem 0;">
+            <span class="status-indicator status-searching"></span>
+            <strong>🌐 Buscando na web...</strong>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        try:
+            urls, latest_revision = get_latest_drawing_urls(
+                "http://rio1web.net.fmcti.com/ipd/fmc_released_legacy/Desenhos/Produtos",
+                drawing_code
+            )
+            
+            search_status.markdown(f"""
+            <div style="display: flex; align-items: center; padding: 1rem; background: #E8F5E8; border-radius: 8px; margin: 1rem 0;">
+                <span class="status-indicator status-success"></span>
+                <strong>✅ Encontrado na web - Revisão {latest_revision}</strong>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown(f'<div class="result-header">📁 Arquivos encontrados (Revisão {latest_revision}):</div>', unsafe_allow_html=True)
+            
+            for i, url in enumerate(urls, 1):
+                filename = url.split('/')[-1]
+                st.markdown(f'<div class="result-item">📄 {i}. {filename}</div>', unsafe_allow_html=True)
+                
+                # Link direto
+                st.markdown(f'<a href="{url}" target="_blank" style="color: var(--technip-blue); text-decoration: none; font-size: 0.9rem;">🔗 Abrir arquivo</a>', unsafe_allow_html=True)
+            
+            # Download em lote
+            if len(urls) > 1:
+                zip_buffer = create_zip_from_urls(urls)
+                st.download_button(
+                    label=f"📦 Baixar todos os arquivos - Revisão {latest_revision}",
+                    data=zip_buffer,
+                    file_name=f"{drawing_code}-web-{latest_revision}.zip",
+                    mime="application/zip"
+                )
+            
+            search_successful = True
+            st.session_state.stop_search = True
+            
+        except Exception as e:
+            search_status.markdown(f"""
+            <div style="display: flex; align-items: center; padding: 1rem; background: #FFEBEE; border-radius: 8px; margin: 1rem 0;">
+                <span class="status-indicator status-error"></span>
+                <strong>⚠️ Web: {str(e)}</strong>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Busca na rede local - Desativados
+    if not st.session_state.stop_search:
+        with st.container():
+            st.markdown('<div class="result-section">', unsafe_allow_html=True)
+            
+            search_status.markdown("""
+            <div style="display: flex; align-items: center; padding: 1rem; background: #E3F2FD; border-radius: 8px; margin: 1rem 0;">
+                <span class="status-indicator status-searching"></span>
+                <strong>🗄️ Buscando na rede local (Desativados)...</strong>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            try:
+                network_path_desativados = r"\\rio-data-srv\arquivo\Desativados"
+                local_files = get_latest_drawing_paths(network_path_desativados, drawing_code, format_drawing_code_desativados)
+                grouped_files = group_files_by_version_and_page(local_files)
+                latest_version = sorted(grouped_files.keys(), reverse=True)[0]
+                
+                search_status.markdown(f"""
+                <div style="display: flex; align-items: center; padding: 1rem; background: #E8F5E8; border-radius: 8px; margin: 1rem 0;">
+                    <span class="status-indicator status-success"></span>
+                    <strong>✅ Encontrado na rede local - Versão {latest_version}</strong>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown(f'<div class="result-header">📁 Arquivos encontrados (Versão {latest_version}):</div>', unsafe_allow_html=True)
+                
+                for page, files in grouped_files[latest_version].items():
+                    st.markdown(f"**📄 Página {page}:**")
+                    for file_path in files:
+                        filename = os.path.basename(file_path)
+                        st.markdown(f'<div class="result-item">📄 {filename}</div>', unsafe_allow_html=True)
+                        
+                        with open(file_path, "rb") as file:
+                            st.download_button(
+                                label=f"📥 Baixar {filename}",
+                                data=file,
+                                file_name=filename,
+                                key=f"download_{filename}_{page}"
+                            )
+                
+                search_successful = True
+                st.session_state.stop_search = True
+                
+            except Exception as e:
+                search_status.markdown(f"""
+                <div style="display: flex; align-items: center; padding: 1rem; background: #FFEBEE; border-radius: 8px; margin: 1rem 0;">
+                    <span class="status-indicator status-error"></span>
+                    <strong>⚠️ Rede (Desativados): {str(e)}</strong>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Busca na rede local - FMC
+    if not st.session_state.stop_search:
+        with st.container():
+            st.markdown('<div class="result-section">', unsafe_allow_html=True)
+            
+            search_status.markdown("""
+            <div style="display: flex; align-items: center; padding: 1rem; background: #E3F2FD; border-radius: 8px; margin: 1rem 0;">
+                <span class="status-indicator status-searching"></span>
+                <strong>🗄️ Buscando na rede local (FMC)...</strong>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            try:
+                network_path_fmc = r"\\rio-data-srv\arquivo\FMC"
+                local_files = get_latest_drawing_paths(network_path_fmc, drawing_code, format_drawing_code_fmc)
+                grouped_files = group_files_by_version_and_page(local_files)
+                latest_version = sorted(grouped_files.keys(), reverse=True)[0]
+                
+                search_status.markdown(f"""
+                <div style="display: flex; align-items: center; padding: 1rem; background: #E8F5E8; border-radius: 8px; margin: 1rem 0;">
+                    <span class="status-indicator status-success"></span>
+                    <strong>✅ Encontrado na rede local - Versão {latest_version}</strong>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown(f'<div class="result-header">📁 Arquivos encontrados (Versão {latest_version}):</div>', unsafe_allow_html=True)
+                
+                for page, files in grouped_files[latest_version].items():
+                    st.markdown(f"**📄 Página {page}:**")
+                    for file_path in files:
+                        filename = os.path.basename(file_path)
+                        st.markdown(f'<div class="result-
