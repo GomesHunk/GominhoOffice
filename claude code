@@ -10,7 +10,7 @@ from datetime import datetime
 
 # Configuração da página com tema customizado
 st.set_page_config(
-    page_title="🔍 TechnipFMC - Legacy Drawing Searcher", 
+    page_title="🔍 TechnipFMC - Legacy Drawing Searcher",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -29,12 +29,12 @@ st.markdown("""
         --technip-dark-gray: #37474F;
         --technip-white: #FFFFFF;
     }
-    
+
     /* Reset padrão do Streamlit */
     .stApp {
         background: linear-gradient(135deg, var(--technip-light-gray) 0%, #E3F2FD 100%);
     }
-    
+
     /* Header principal */
     .main-header {
         background: linear-gradient(135deg, var(--technip-red) 0%, var(--technip-purple) 50%, var(--technip-blue) 100%);
@@ -47,7 +47,7 @@ st.markdown("""
         position: relative;
         overflow: hidden;
     }
-    
+
     .main-header::before {
         content: '';
         position: absolute;
@@ -58,7 +58,7 @@ st.markdown("""
         background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/><circle cx="25" cy="75" r="1" fill="white" opacity="0.05"/><circle cx="75" cy="25" r="1" fill="white" opacity="0.05"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
         pointer-events: none;
     }
-    
+
     .logo-container {
         display: flex;
         align-items: center;
@@ -68,14 +68,14 @@ st.markdown("""
         position: relative;
         z-index: 1;
     }
-    
+
     .technip-logo {
         font-size: 2.5rem;
         font-weight: 800;
         letter-spacing: -1px;
         text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     }
-    
+
     .header-subtitle {
         font-size: 1.2rem;
         font-weight: 300;
@@ -84,7 +84,7 @@ st.markdown("""
         position: relative;
         z-index: 1;
     }
-    
+
     /* Cards de conteúdo */
     .content-card {
         background: white;
@@ -95,12 +95,12 @@ st.markdown("""
         border-left: 4px solid var(--technip-blue);
         transition: all 0.3s ease;
     }
-    
+
     .content-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 8px 30px rgba(0,0,0,0.12);
     }
-    
+
     /* Seção de input */
     .input-section {
         background: white;
@@ -110,7 +110,7 @@ st.markdown("""
         box-shadow: 0 4px 20px rgba(0,0,0,0.08);
         border-top: 3px solid var(--technip-teal);
     }
-    
+
     /* Botões customizados */
     .stButton > button {
         background: linear-gradient(135deg, var(--technip-blue) 0%, var(--technip-teal) 100%);
@@ -123,13 +123,13 @@ st.markdown("""
         transition: all 0.3s ease;
         box-shadow: 0 4px 15px rgba(30, 136, 229, 0.3);
     }
-    
+
     .stButton > button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(30, 136, 229, 0.4);
+        box_shadow: 0 6px 20px rgba(30, 136, 229, 0.4);
         background: linear-gradient(135deg, var(--technip-teal) 0%, var(--technip-blue) 100%);
     }
-    
+
     /* Botão secundário */
     .secondary-button > button {
         background: transparent;
@@ -138,23 +138,23 @@ st.markdown("""
         border-radius: 8px;
         font-weight: 500;
     }
-    
+
     .secondary-button > button:hover {
         background: var(--technip-dark-gray);
         color: white;
     }
-    
+
     /* Botão de parar */
     .stop-button > button {
         background: linear-gradient(135deg, var(--technip-red) 0%, #FF5722 100%);
         color: white;
         border: none;
     }
-    
+
     .stop-button > button:hover {
         background: linear-gradient(135deg, #FF5722 0%, var(--technip-red) 100%);
     }
-    
+
     /* Alertas e mensagens */
     .stSuccess {
         background: linear-gradient(135deg, #4CAF50 0%, var(--technip-teal) 100%);
@@ -163,25 +163,25 @@ st.markdown("""
         padding: 1rem;
         border: none;
     }
-    
+
     .stWarning {
         background: linear-gradient(135deg, #FF9800 0%, #FFB74D 100%);
         border-radius: 8px;
         border: none;
     }
-    
+
     .stError {
         background: linear-gradient(135deg, var(--technip-red) 0%, #F44336 100%);
         color: white;
         border-radius: 8px;
         border: none;
     }
-    
+
     /* Spinner customizado */
     .stSpinner {
         color: var(--technip-blue);
     }
-    
+
     /* Seção de resultados */
     .result-section {
         background: white;
@@ -191,7 +191,7 @@ st.markdown("""
         border-left: 4px solid var(--technip-teal);
         box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     }
-    
+
     .result-header {
         color: var(--technip-dark-blue);
         font-size: 1.2rem;
@@ -201,7 +201,7 @@ st.markdown("""
         align-items: center;
         gap: 0.5rem;
     }
-    
+
     .result-item {
         background: var(--technip-light-gray);
         padding: 0.8rem;
@@ -211,7 +211,7 @@ st.markdown("""
         font-size: 0.9rem;
         border-left: 3px solid var(--technip-blue);
     }
-    
+
     /* Status indicators */
     .status-indicator {
         display: inline-block;
@@ -220,25 +220,25 @@ st.markdown("""
         border-radius: 50%;
         margin-right: 8px;
     }
-    
+
     .status-searching {
         background: linear-gradient(45deg, var(--technip-blue), var(--technip-teal));
         animation: pulse 1.5s infinite;
     }
-    
+
     .status-success {
         background: #4CAF50;
     }
-    
+
     .status-error {
         background: var(--technip-red);
     }
-    
+
     @keyframes pulse {
         0%, 100% { opacity: 1; transform: scale(1); }
         50% { opacity: 0.5; transform: scale(1.1); }
     }
-    
+
     /* Footer */
     .footer {
         background: var(--technip-dark-gray);
@@ -249,7 +249,7 @@ st.markdown("""
         margin-top: 3rem;
         font-size: 0.9rem;
     }
-    
+
     /* Input customizado */
     .stTextInput > div > div > input {
         border-radius: 8px;
@@ -258,12 +258,12 @@ st.markdown("""
         font-size: 1rem;
         transition: all 0.3s ease;
     }
-    
+
     .stTextInput > div > div > input:focus {
         border-color: var(--technip-blue);
         box-shadow: 0 0 0 3px rgba(30, 136, 229, 0.1);
     }
-    
+
     /* Métricas */
     .metric-card {
         background: white;
@@ -273,7 +273,7 @@ st.markdown("""
         box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         border-top: 3px solid var(--technip-purple);
     }
-    
+
     /* Barra de progresso customizada */
     .progress-container {
         background: #E0E0E0;
@@ -282,7 +282,7 @@ st.markdown("""
         margin: 1rem 0;
         overflow: hidden;
     }
-    
+
     .progress-bar {
         height: 100%;
         background: linear-gradient(90deg, var(--technip-blue) 0%, var(--technip-teal) 100%);
@@ -302,7 +302,7 @@ st.markdown("""
         border-left: 3px solid var(--technip-purple);
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
-    
+
     .history-code {
         font-family: 'Courier New', monospace;
         font-weight: 600;
@@ -378,11 +378,10 @@ def get_latest_drawing_urls(base_url, drawing_code):
 
 def get_latest_drawing_paths(base_path, drawing_code, format_code_func):
     drawing_code = format_code_func(drawing_code)
-    parts = drawing_code.split('-')
-    if len(parts) < 2:
-        raise ValueError("Formato inválido. Use: 'xxx-xxx' ou 'xxx-xxx-xxx'")
-
-    file_pattern = re.compile(f"{drawing_code}(-\\d+)?-?([A-Z])?\\.tif$")
+    # The regex for FMC codes can be simpler if they don't always follow the 'xxx-xxx-xxx' structure.
+    # For now, we'll keep it flexible, assuming it might include page/version.
+    # Adjust as needed for specific FMC naming conventions.
+    file_pattern = re.compile(rf"{re.escape(drawing_code)}(-\d+)?-?([A-Z])?\.tif$", re.IGNORECASE)
     found_files = []
 
     for root, dirs, files in os.walk(base_path):
@@ -398,16 +397,29 @@ def get_latest_drawing_paths(base_path, drawing_code, format_code_func):
 def group_files_by_version_and_page(files):
     grouped_files = {}
     for file in files:
-        match = re.search(r'-(\d+)?-?([A-Z])?\.', file)
+        # Adjusted regex to correctly capture optional page and version for local files
+        # Assuming format like CODE-PAGE-VERSION.tif or CODE-VERSION.tif or CODE.tif
+        match = re.search(r'-(\d+)?-?([A-Z])?\.(tif|pdf)$', file, re.IGNORECASE) # Added PDF as a possible extension
+        page = 'single'
+        version = ''
+
         if match:
-            page = match.group(1) if match.group(1) else 'single'
-            version = match.group(2) if match.group(2) else ''
-            if version not in grouped_files:
-                grouped_files[version] = {}
-            if page not in grouped_files[version]:
-                grouped_files[version][page] = []
-            grouped_files[version][page].append(file)
+            if match.group(1): # It means a page number was found
+                page = match.group(1)
+                version = match.group(2) if match.group(2) else '' # Version might follow page
+            elif match.group(2): # No page, but a version is present (e.g., CODE-A.tif)
+                version = match.group(2)
+
+        if not version: # If no explicit version, assume 'A' or 'latest'
+            version = 'A' # Default to 'A' if no version found, or a placeholder
+
+        if version not in grouped_files:
+            grouped_files[version] = {}
+        if page not in grouped_files[version]:
+            grouped_files[version][page] = []
+        grouped_files[version][page].append(file)
     return grouped_files
+
 
 def create_zip(files):
     buffer = BytesIO()
@@ -454,9 +466,9 @@ if "search_stats" not in st.session_state:
 # Seção de input
 with st.container():
     st.markdown('<div class="input-section">', unsafe_allow_html=True)
-    
+
     col1, col2 = st.columns([3, 1])
-    
+
     with col1:
         st.markdown("### 📋 Código do Desenho")
         drawing_code = st.text_input(
@@ -465,50 +477,50 @@ with st.container():
             placeholder="Ex: 180-570-542",
             help="Formato aceito: xxx-xxx-xxx (números separados por hífen)"
         )
-    
+
     with col2:
         st.markdown("### ⚙️ Controles")
         st.write("")  # Espaçamento
-        
+
         col_btn1, col_btn2, col_btn3 = st.columns(3)
-        
+
         with col_btn1:
             search_btn = st.button("🔍 Buscar", use_container_width=True)
-        
+
         with col_btn2:
             clear_btn = st.button("🗑️ Limpar", use_container_width=True)
             if clear_btn:
                 st.session_state.drawing_code = ""
                 st.rerun()
-        
+
         with col_btn3:
             st.markdown('<div class="stop-button">', unsafe_allow_html=True)
             stop_btn = st.button("⏹️ Parar", use_container_width=True)
             if stop_btn:
                 st.session_state.stop_search = True
             st.markdown('</div>', unsafe_allow_html=True)
-    
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 # Estatísticas rápidas
 if st.session_state.search_stats["total_searches"] > 0:
     with st.container():
         col1, col2, col3 = st.columns(3)
-        
+
         with col1:
             st.metric(
                 label="📊 Total de Buscas",
                 value=st.session_state.search_stats["total_searches"]
             )
-        
+
         with col2:
             st.metric(
                 label="✅ Buscas Bem-sucedidas",
                 value=st.session_state.search_stats["successful_searches"]
             )
-        
+
         with col3:
-            success_rate = (st.session_state.search_stats["successful_searches"] / 
+            success_rate = (st.session_state.search_stats["successful_searches"] /
                           st.session_state.search_stats["total_searches"]) * 100
             st.metric(
                 label="📈 Taxa de Sucesso",
@@ -524,56 +536,57 @@ if drawing_code and not re.match(r'^\d{1,3}-\d{1,3}(-\d{1,3})?$', drawing_code):
 if search_btn and drawing_code:
     st.session_state.drawing_code = drawing_code
     st.session_state.stop_search = False
-    
+
     # Atualizar estatísticas
     st.session_state.search_stats["total_searches"] += 1
     search_successful = False
-    
+
     # Adicionar ao histórico
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     search_entry = {"code": drawing_code, "timestamp": timestamp, "found": False}
-    
-    if drawing_code not in [entry["code"] for entry in st.session_state.search_history]:
+
+    # Only add to history if not already present
+    if not any(entry["code"] == drawing_code for entry in st.session_state.search_history):
         st.session_state.search_history.insert(0, search_entry)
         if len(st.session_state.search_history) > 10:
             st.session_state.search_history.pop()
-    
+
     # Status de busca
     search_status = st.empty()
-    
+
     # Busca na web
     with st.container():
         st.markdown('<div class="result-section">', unsafe_allow_html=True)
-        
+
         search_status.markdown("""
         <div style="display: flex; align-items: center; padding: 1rem; background: #E3F2FD; border-radius: 8px; margin: 1rem 0;">
             <span class="status-indicator status-searching"></span>
             <strong>🌐 Buscando na web...</strong>
         </div>
         """, unsafe_allow_html=True)
-        
+
         try:
             urls, latest_revision = get_latest_drawing_urls(
                 "http://rio1web.net.fmcti.com/ipd/fmc_released_legacy/Desenhos/Produtos",
                 drawing_code
             )
-            
+
             search_status.markdown(f"""
             <div style="display: flex; align-items: center; padding: 1rem; background: #E8F5E8; border-radius: 8px; margin: 1rem 0;">
                 <span class="status-indicator status-success"></span>
                 <strong>✅ Encontrado na web - Revisão {latest_revision}</strong>
             </div>
             """, unsafe_allow_html=True)
-            
+
             st.markdown(f'<div class="result-header">📁 Arquivos encontrados (Revisão {latest_revision}):</div>', unsafe_allow_html=True)
-            
+
             for i, url in enumerate(urls, 1):
                 filename = url.split('/')[-1]
                 st.markdown(f'<div class="result-item">📄 {i}. {filename}</div>', unsafe_allow_html=True)
-                
+
                 # Link direto
                 st.markdown(f'<a href="{url}" target="_blank" style="color: var(--technip-blue); text-decoration: none; font-size: 0.9rem;">🔗 Abrir arquivo</a>', unsafe_allow_html=True)
-            
+
             # Download em lote
             if len(urls) > 1:
                 zip_buffer = create_zip_from_urls(urls)
@@ -583,10 +596,10 @@ if search_btn and drawing_code:
                     file_name=f"{drawing_code}-web-{latest_revision}.zip",
                     mime="application/zip"
                 )
-            
+
             search_successful = True
-            st.session_state.stop_search = True
-            
+            st.session_state.stop_search = True # Stop further searches if found on web
+
         except Exception as e:
             search_status.markdown(f"""
             <div style="display: flex; align-items: center; padding: 1rem; background: #FFEBEE; border-radius: 8px; margin: 1rem 0;">
@@ -594,53 +607,66 @@ if search_btn and drawing_code:
                 <strong>⚠️ Web: {str(e)}</strong>
             </div>
             """, unsafe_allow_html=True)
-        
+
         st.markdown('</div>', unsafe_allow_html=True)
-    
+
     # Busca na rede local - Desativados
     if not st.session_state.stop_search:
         with st.container():
             st.markdown('<div class="result-section">', unsafe_allow_html=True)
-            
+
             search_status.markdown("""
             <div style="display: flex; align-items: center; padding: 1rem; background: #E3F2FD; border-radius: 8px; margin: 1rem 0;">
                 <span class="status-indicator status-searching"></span>
                 <strong>🗄️ Buscando na rede local (Desativados)...</strong>
             </div>
             """, unsafe_allow_html=True)
-            
+
             try:
+                # Use a raw string for Windows paths to avoid issues with backslashes
                 network_path_desativados = r"\\rio-data-srv\arquivo\Desativados"
                 local_files = get_latest_drawing_paths(network_path_desativados, drawing_code, format_drawing_code_desativados)
                 grouped_files = group_files_by_version_and_page(local_files)
                 latest_version = sorted(grouped_files.keys(), reverse=True)[0]
-                
+
                 search_status.markdown(f"""
                 <div style="display: flex; align-items: center; padding: 1rem; background: #E8F5E8; border-radius: 8px; margin: 1rem 0;">
                     <span class="status-indicator status-success"></span>
-                    <strong>✅ Encontrado na rede local - Versão {latest_version}</strong>
+                    <strong>✅ Encontrado na rede local (Desativados) - Versão {latest_version}</strong>
                 </div>
                 """, unsafe_allow_html=True)
+
+                st.markdown(f'<div class="result-header">📁 Arquivos encontrados (Desativados - Versão {latest_version}):</div>', unsafe_allow_html=True)
                 
-                st.markdown(f'<div class="result-header">📁 Arquivos encontrados (Versão {latest_version}):</div>', unsafe_allow_html=True)
-                
+                all_files_to_zip_desativados = []
                 for page, files in grouped_files[latest_version].items():
                     st.markdown(f"**📄 Página {page}:**")
                     for file_path in files:
                         filename = os.path.basename(file_path)
                         st.markdown(f'<div class="result-item">📄 {filename}</div>', unsafe_allow_html=True)
-                        
+                        all_files_to_zip_desativados.append(file_path)
+
                         with open(file_path, "rb") as file:
                             st.download_button(
                                 label=f"📥 Baixar {filename}",
                                 data=file,
                                 file_name=filename,
-                                key=f"download_{filename}_{page}"
+                                key=f"download_desativados_{filename}_{page}"
                             )
                 
+                if len(all_files_to_zip_desativados) > 1:
+                    zip_buffer_desativados = create_zip(all_files_to_zip_desativados)
+                    st.download_button(
+                        label=f"📦 Baixar todos os arquivos (Desativados) - Versão {latest_version}",
+                        data=zip_buffer_desativados,
+                        file_name=f"{drawing_code}-desativados-{latest_version}.zip",
+                        mime="application/zip",
+                        key=f"download_all_desativados_{latest_version}"
+                    )
+
                 search_successful = True
-                st.session_state.stop_search = True
-                
+                st.session_state.stop_search = True # Stop further searches if found here
+
             except Exception as e:
                 search_status.markdown(f"""
                 <div style="display: flex; align-items: center; padding: 1rem; background: #FFEBEE; border-radius: 8px; margin: 1rem 0;">
@@ -648,38 +674,124 @@ if search_btn and drawing_code:
                     <strong>⚠️ Rede (Desativados): {str(e)}</strong>
                 </div>
                 """, unsafe_allow_html=True)
-            
+
             st.markdown('</div>', unsafe_allow_html=True)
-    
+
     # Busca na rede local - FMC
     if not st.session_state.stop_search:
         with st.container():
             st.markdown('<div class="result-section">', unsafe_allow_html=True)
-            
+
             search_status.markdown("""
             <div style="display: flex; align-items: center; padding: 1rem; background: #E3F2FD; border-radius: 8px; margin: 1rem 0;">
                 <span class="status-indicator status-searching"></span>
                 <strong>🗄️ Buscando na rede local (FMC)...</strong>
             </div>
             """, unsafe_allow_html=True)
-            
+
             try:
+                # Use a raw string for Windows paths to avoid issues with backslashes
                 network_path_fmc = r"\\rio-data-srv\arquivo\FMC"
-                local_files = get_latest_drawing_paths(network_path_fmc, drawing_code, format_drawing_code_fmc)
-                grouped_files = group_files_by_version_and_page(local_files)
-                latest_version = sorted(grouped_files.keys(), reverse=True)[0]
+                local_files_fmc = get_latest_drawing_paths(network_path_fmc, drawing_code, format_drawing_code_fmc)
+                grouped_files_fmc = group_files_by_version_and_page(local_files_fmc)
                 
+                # Determine the latest version found across all pages
+                latest_version_fmc = sorted(grouped_files_fmc.keys(), reverse=True)[0] if grouped_files_fmc else None
+
+                if latest_version_fmc:
+                    search_status.markdown(f"""
+                    <div style="display: flex; align-items: center; padding: 1rem; background: #E8F5E8; border-radius: 8px; margin: 1rem 0;">
+                        <span class="status-indicator status-success"></span>
+                        <strong>✅ Encontrado na rede local (FMC) - Versão {latest_version_fmc}</strong>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    st.markdown(f'<div class="result-header">📁 Arquivos encontrados (FMC - Versão {latest_version_fmc}):</div>', unsafe_allow_html=True)
+                    
+                    all_files_to_zip_fmc = []
+                    for page, files in grouped_files_fmc[latest_version_fmc].items():
+                        st.markdown(f"**📄 Página {page}:**")
+                        for file_path in files:
+                            filename = os.path.basename(file_path)
+                            st.markdown(f'<div class="result-item">📄 {filename}</div>', unsafe_allow_html=True)
+                            all_files_to_zip_fmc.append(file_path)
+
+                            with open(file_path, "rb") as file:
+                                st.download_button(
+                                    label=f"📥 Baixar {filename}",
+                                    data=file,
+                                    file_name=filename,
+                                    key=f"download_fmc_{filename}_{page}"
+                                )
+                    
+                    if len(all_files_to_zip_fmc) > 1:
+                        zip_buffer_fmc = create_zip(all_files_to_zip_fmc)
+                        st.download_button(
+                            label=f"📦 Baixar todos os arquivos (FMC) - Versão {latest_version_fmc}",
+                            data=zip_buffer_fmc,
+                            file_name=f"{drawing_code}-fmc-{latest_version_fmc}.zip",
+                            mime="application/zip",
+                            key=f"download_all_fmc_{latest_version_fmc}"
+                        )
+                    search_successful = True
+                    st.session_state.stop_search = True # Stop further searches if found here
+                else:
+                     raise Exception("Nenhum arquivo encontrado para FMC.")
+
+            except Exception as e:
                 search_status.markdown(f"""
-                <div style="display: flex; align-items: center; padding: 1rem; background: #E8F5E8; border-radius: 8px; margin: 1rem 0;">
-                    <span class="status-indicator status-success"></span>
-                    <strong>✅ Encontrado na rede local - Versão {latest_version}</strong>
+                <div style="display: flex; align-items: center; padding: 1rem; background: #FFEBEE; border-radius: 8px; margin: 1rem 0;">
+                    <span class="status-indicator status-error"></span>
+                    <strong>⚠️ Rede (FMC): {str(e)}</strong>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                st.markdown(f'<div class="result-header">📁 Arquivos encontrados (Versão {latest_version}):</div>', unsafe_allow_html=True)
-                
-                for page, files in grouped_files[latest_version].items():
-                    st.markdown(f"**📄 Página {page}:**")
-                    for file_path in files:
-                        filename = os.path.basename(file_path)
-                        st.markdown(f'<div class="result-
+
+            st.markdown('</div>', unsafe_allow_html=True)
+
+
+    # Finaliza a busca e atualiza o status geral
+    if search_successful:
+        st.session_state.search_stats["successful_searches"] += 1
+        # Update the 'found' status in the history for the current search
+        for entry in st.session_state.search_history:
+            if entry["code"] == drawing_code:
+                entry["found"] = True
+                break
+        st.success("🎉 Busca concluída! Arquivos encontrados nas fontes disponíveis.")
+    else:
+        st.warning("😕 Busca concluída. Nenhum arquivo encontrado nas fontes configuradas.")
+
+    # Reset stop_search flag for the next search
+    st.session_state.stop_search = False
+
+---
+## 🕰️ Histórico de Buscas Recentes
+
+Se você já realizou uma busca e deseja revisitar, ela estará aqui!
+
+<div style="margin-top: 1rem;"></div>
+""", unsafe_allow_html=True)
+
+if st.session_state.search_history:
+    for entry in st.session_state.search_history:
+        status_icon = "✅" if entry["found"] else "❌"
+        st.markdown(f"""
+        <div class="history-item">
+            <div>
+                <span class="history-code">{entry["code"]}</span>
+                <br>
+                <small style="opacity: 0.7;">{entry["timestamp"]}</small>
+            </div>
+            <div>{status_icon}</div>
+        </div>
+        """, unsafe_allow_html=True)
+else:
+    st.info("Nenhum histórico de buscas ainda. Comece a buscar um desenho!")
+
+---
+<div class="footer">
+    Desenvolvido com ❤️ para a equipe TechnipFMC
+    <br>
+    Versão 1.0 - Junho de 2025
+</div>
+""", unsafe_allow_html=True)
