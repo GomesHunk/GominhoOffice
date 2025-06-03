@@ -1,0 +1,599 @@
+import streamlit as st
+import requests
+from bs4 import BeautifulSoup
+import re
+import os
+import zipfile
+from io import BytesIO
+
+# --- CSS Customizado ---
+def local_css(file_name):
+    with open(file_name) as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+# Criar um arquivo style.css na mesma pasta do seu app.py com o seguinte conteúdo:
+# (Você pode ajustar cores e fontes como preferir)
+"""
+/* style.css */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Arredondar inputs e botões */
+.stTextInput input, .stButton button {
+    border-radius: 0.5rem; /* Bordas mais arredondadas */
+}
+
+/* Estilo para o container principal de input */
+div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column;"] > div[data-testid="stVerticalBlock"] {
+    /* Isso é um seletor genérico, pode precisar de ajuste se a estrutura do Streamlit mudar */
+    /* Vamos usar st.container(border=True) que é mais robusto */
+}
+
+/* Destacar o botão primário (Buscar) */
+.stButton button[kind="primary"] {
+    background-color: #4CAF50; /* Verde - Ajuste conforme sua preferência */
+    color: white;
+}
+.stButton button[kind="primary"]:hover {
+    background-color: #45a049;
+}
+
+/* Melhorar a aparência dos containers de resultados */
+div[data-testid="stExpander"] div[data-testid="stVerticalBlock"] {
+    padding-left: 10px;
+}
+"""
+# Comentário: Como não posso criar arquivos, vou embutir o CSS no código Python.
+# Em um cenário real, usar um arquivo style.css separado é melhor.
+
+EMBEDDED_CSS = """
+<style>
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    /* Estilo para o título principal */
+    h1 {
+        color: #00BFFF; /* Um azul vibrante para o título */
+        text-align: center;
+        padding-bottom: 20px;
+    }
+
+    /* Arredondar inputs */
+    .stTextInput input {
+        border-radius: 0.3rem;
+        border: 1px solid #4A4A4A; /* Borda sutil para inputs */
+    }
+
+    /* Estilo geral para botões */
+    .stButton button {
+        border-radius: 0.3rem;
+        border: 1px solid #4A4A4A;
+        padding: 0.4em 0.8em;
+    }
+
+    /* Botão Primário (Buscar) */
+    .stButton button[kind="primary"] {
+        background-color: #0078D4; /* Azul Microsoft */
+        color: white;
+        border: none;
+    }
+    .stButton button[kind="primary"]:hover {
+        background-color: #005A9E;
+        color: white;
+    }
+    .stButton button[kind="secondary"] {
+        /* Para os botões Limpar e Parar */
+        background-color: #555555;
+        color: white;
+        border: none;
+    }
+    .stButton button[kind="secondary"]:hover {
+        background-color: #6E6E6E;
+        color: white;
+    }
+
+    /* Melhorar a aparência das abas */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px; /* Espaçamento entre os nomes das abas */
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 40px;
+        white-space: pre-wrap;
+        background-color: #2C2C2C; /* Fundo da aba não selecionada */
+        border-radius: 4px 4px 0px 0px;
+        gap: 1px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #0078D4; /* Fundo da aba selecionada */
+        color: white; /* Texto da aba selecionada */
+    }
+
+    /* Estilo para os containers de resultados (dentro das abas) */
+    .result-container {
+        padding: 15px;
+        border-radius: 0.5rem;
+        background-color: #2E2E2E; /* Um pouco mais claro que o fundo para destaque */
+        margin-bottom: 10px;
+    }
+
+    .file-entry {
+        padding: 8px;
+        border-radius: 0.3rem;
+        background-color: #3A3A3A;
+        margin-bottom: 5px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .stDownloadButton button {
+        background-color: #306793;
+        color: white;
+        border: none;
+        border-radius: 0.3rem;
+    }
+    .stDownloadButton button:hover {
+        background-color: #4087bd;
+        color: white;
+    }
+
+</style>
+"""
+st.markdown(EMBEDDED_CSS, unsafe_allow_html=True)
+
+# --- Funções do seu código (sem alterações na lógica interna) ---
+# Função para formatar o código de desenho para a pasta Desativados
+def format_drawing_code_desativados(drawing_code):
+    parts = drawing_code.split('-')
+    formatted_parts = [parts[0].zfill(3)] + parts[1:]
+    return '-'.join(formatted_parts)
+
+# Função para formatar o código de desenho para a pasta FMC (sem formatação)
+def format_drawing_code_fmc(drawing_code):
+    return drawing_code
+
+# Busca na web
+def get_latest_drawing_urls(base_url, drawing_code):
+    drawing_code_formatted = format_drawing_code_desativados(drawing_code) # Web usa o mesmo formato de desativados
+    parts = drawing_code_formatted.split('-')
+    if len(parts) != 3:
+        raise ValueError("Formato inválido para busca web. Use: 'xxx-xxx-xxx'")
+
+    response = requests.get(base_url)
+    if response.status_code != 200:
+        raise Exception(f"Erro ao acessar a pasta raiz: {base_url} (Status: {response.status_code})")
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    first_level_pattern = re.compile(f"^{parts[0]}\\b.*")
+    first_level_folder_tag = soup.find('a', href=True, string=first_level_pattern)
+    if not first_level_folder_tag:
+        # Tentativa de encontrar mesmo se houver algo antes do código no nome da pasta
+        links = soup.find_all('a', href=True)
+        first_level_folder_tag = next((link for link in links if first_level_pattern.search(link.text.strip('/'))), None)
+        if not first_level_folder_tag:
+            raise Exception(f"Nenhuma pasta encontrada para o prefixo: {parts[0]}")
+    first_level_folder = first_level_folder_tag['href']
+    first_level_url = base_url.rstrip('/') + '/' + first_level_folder.lstrip('/')
+
+
+    response = requests.get(first_level_url)
+    if response.status_code != 200:
+        raise Exception(f"Erro ao acessar a subpasta: {first_level_url} (Status: {response.status_code})")
+    soup = BeautifulSoup(response.content, 'html.parser')
+    second_level_pattern = re.compile(f"^{parts[0]}-{parts[1]}\\b.*")
+    second_level_folder_tag = soup.find('a', href=True, string=second_level_pattern)
+    if not second_level_folder_tag:
+        links = soup.find_all('a', href=True)
+        second_level_folder_tag = next((link for link in links if second_level_pattern.search(link.text.strip('/'))), None)
+        if not second_level_folder_tag:
+            raise Exception(f"Nenhuma subpasta encontrada para: {parts[0]}-{parts[1]}")
+    second_level_folder = second_level_folder_tag['href']
+    second_level_url = first_level_url.rstrip('/') + '/' + second_level_folder.lstrip('/')
+
+    response = requests.get(second_level_url)
+    if response.status_code != 200:
+        raise Exception(f"Erro ao acessar a subpasta final: {second_level_url} (Status: {response.status_code})")
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    file_pattern = re.compile(f"{drawing_code_formatted}(-\\d+)?-([A-Z])\\.tif$", re.IGNORECASE)
+    file_links_tags = soup.find_all('a', href=True)
+    file_links = [link['href'] for link in file_links_tags if file_pattern.match(link['href'].split('/')[-1])]
+
+
+    if not file_links:
+        raise Exception(f"Nenhum arquivo .tif encontrado para: {drawing_code_formatted} em {second_level_url}")
+
+    grouped = {}
+    for file_href in file_links:
+        file_name = file_href.split('/')[-1]
+        match = file_pattern.match(file_name)
+        if match:
+            revision = match.group(2).upper() # Garante que a revisão seja maiúscula
+            if revision not in grouped:
+                grouped[revision] = []
+            # Monta a URL completa do arquivo
+            full_file_url = second_level_url.rstrip('/') + '/' + file_href.lstrip('/')
+            grouped[revision].append(full_file_url)
+
+
+    if not grouped: # Checagem adicional caso o file_pattern não case corretamente após encontrar links
+         raise Exception(f"Nenhum arquivo .tif agrupável por revisão encontrado para: {drawing_code_formatted}")
+
+    latest_revision = sorted(grouped.keys(), reverse=True)[0]
+    return grouped[latest_revision], latest_revision
+
+# Busca na rede local
+def get_latest_drawing_paths(base_path, drawing_code, format_code_func):
+    formatted_code = format_code_func(drawing_code)
+    # Padrão ajustado para ser mais flexível com hífens e opcionalidade de página/revisão
+    # Ex: 123-456-789-1-A.tif, 123-456-789-A.tif, 123-456-789.tif
+    file_pattern_str = f"^{re.escape(formatted_code)}(?:-\\d+)?(?:-([A-Z]))?\\.tif$"
+    file_pattern = re.compile(file_pattern_str, re.IGNORECASE)
+
+    found_files_data = [] # Armazenar tuplas (caminho_completo, revisão, número_pagina_opcional)
+
+    for root, dirs, files in os.walk(base_path):
+        # Otimização: se o código formatado não estiver no caminho, pular subdiretórios
+        # Isso pode ser muito agressivo se a estrutura de pastas não seguir o código.
+        # Removido por enquanto para garantir a busca completa, mas pode ser re-introduzido
+        # com cuidado se a performance for um problema e a estrutura de pastas for previsível.
+        # Ex: if not any(part in root for part in formatted_code.split('-')[:2]):
+        # continue
+
+        for file in files:
+            match = file_pattern.search(file)
+            if match:
+                revision_char = match.group(1).upper() if match.group(1) else '' # Revisão é o grupo 1
+                # Adicionar lógica para extrair número da página se necessário, por enquanto focamos na revisão
+                found_files_data.append({'path': os.path.join(root, file), 'revision': revision_char, 'name': file})
+
+    if not found_files_data:
+        raise Exception(f"Nenhum arquivo .tif encontrado para: {formatted_code} em {base_path}")
+
+    # Agrupar por revisão
+    grouped_by_revision = {}
+    for file_data in found_files_data:
+        rev = file_data['revision']
+        if rev not in grouped_by_revision:
+            grouped_by_revision[rev] = []
+        grouped_by_revision[rev].append(file_data['path'])
+
+    if not grouped_by_revision: # Segurança
+        raise Exception(f"Nenhum arquivo pôde ser agrupado por revisão para: {formatted_code}")
+
+    # Selecionar a revisão mais recente (ordem alfabética reversa, '' é a menor)
+    latest_revision_char = sorted(grouped_by_revision.keys(), reverse=True)[0]
+    
+    # Retornar os caminhos da revisão mais recente e a letra da revisão
+    return grouped_by_revision[latest_revision_char], latest_revision_char
+
+
+# Função para agrupar arquivos por página (simplificado, pois a revisão já foi tratada)
+def group_local_files_by_page(files, drawing_code, revision_char):
+    # Ex: D123-456-789-1-A.tif -> page 1
+    # Ex: D123-456-789-A.tif -> page 'single'
+    # O drawing_code aqui deve ser o formatado e incluir a revisão
+    base_pattern_str = f"^{re.escape(drawing_code)}(?:-([0-9]+))?-{revision_char}\\.tif$"
+    page_pattern = re.compile(base_pattern_str, re.IGNORECASE)
+    
+    grouped_by_page = {}
+    for file_path in files:
+        file_name = os.path.basename(file_path)
+        match = page_pattern.match(file_name)
+        page_num = '1' # Default para arquivos sem número de página explícito
+        if match and match.group(1):
+            page_num = match.group(1)
+        
+        if page_num not in grouped_by_page:
+            grouped_by_page[page_num] = []
+        grouped_by_page[page_num].append(file_path)
+    return grouped_by_page
+
+
+# Função para criar um arquivo zip com os arquivos fornecidos
+def create_zip_from_paths(files_paths, zip_filename_base):
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as zip_file:
+        for file_path in files_paths:
+            zip_file.write(file_path, os.path.basename(file_path))
+    buffer.seek(0)
+    return buffer, f"{zip_filename_base}.zip"
+
+# Função para criar um arquivo zip a partir de URLs
+def create_zip_from_urls(urls, zip_filename_base):
+    buffer = BytesIO()
+    # Adiciona um contador para nomes de arquivo duplicados dentro do zip (improvável aqui, mas boa prática)
+    filenames_in_zip = {} 
+    with zipfile.ZipFile(buffer, 'w') as zip_file:
+        for url in urls:
+            try:
+                response = requests.get(url, timeout=10) # Adiciona timeout
+                response.raise_for_status() # Levanta erro para status ruins
+                filename = url.split('/')[-1]
+
+                # Lida com nomes duplicados (embora raro com TIFs versionados)
+                original_filename = filename
+                count = 1
+                while filename in filenames_in_zip:
+                    name, ext = os.path.splitext(original_filename)
+                    filename = f"{name}_{count}{ext}"
+                    count += 1
+                filenames_in_zip[filename] = True
+
+                zip_file.writestr(filename, response.content)
+            except requests.RequestException as e:
+                st.error(f"Erro ao baixar {url} para o ZIP: {e}") # Informa erro específico
+                # Decide se quer continuar ou parar. Por enquanto, continua.
+    buffer.seek(0)
+    return buffer, f"{zip_filename_base}.zip"
+
+
+# --- Interface Streamlit ---
+st.set_page_config(page_title="🔍 Localizador de Desenhos Legacy", layout="wide", initial_sidebar_state="collapsed")
+st.title("🏢 Localizador de Desenhos Técnicos Legacy")
+
+# Inicialização do session_state
+if "drawing_code" not in st.session_state:
+    st.session_state.drawing_code = ""
+if "stop_search" not in st.session_state:
+    st.session_state.stop_search = False
+if "search_triggered" not in st.session_state:
+    st.session_state.search_triggered = False
+# Para armazenar resultados e erros para as abas
+if "web_results" not in st.session_state: st.session_state.web_results = None
+if "web_error" not in st.session_state: st.session_state.web_error = None
+if "web_revision" not in st.session_state: st.session_state.web_revision = None
+if "desativados_results" not in st.session_state: st.session_state.desativados_results = None
+if "desativados_error" not in st.session_state: st.session_state.desativados_error = None
+if "desativados_revision" not in st.session_state: st.session_state.desativados_revision = None
+if "fmc_results" not in st.session_state: st.session_state.fmc_results = None
+if "fmc_error" not in st.session_state: st.session_state.fmc_error = None
+if "fmc_revision" not in st.session_state: st.session_state.fmc_revision = None
+
+
+# --- Área de Input e Controles ---
+with st.container(border=True):
+    drawing_code_input = st.text_input(
+        "🔢 Digite o código do desenho (ex: 180-570-542):",
+        value=st.session_state.drawing_code,
+        key="drawing_code_input_key", # Chave para reset programático se necessário
+        placeholder="Ex: 012-345-678"
+    )
+    st.session_state.drawing_code = drawing_code_input # Sincroniza com session_state
+
+    col1, col2, col3 = st.columns([2,1,1])
+    with col1:
+        if st.button("🔍 Buscar Desenho", use_container_width=True, type="primary"):
+            if st.session_state.drawing_code:
+                st.session_state.search_triggered = True
+                st.session_state.stop_search = False # Resetar flag de parada a cada nova busca
+                # Limpar resultados anteriores
+                st.session_state.web_results, st.session_state.web_error, st.session_state.web_revision = None, None, None
+                st.session_state.desativados_results, st.session_state.desativados_error, st.session_state.desativados_revision = None, None, None
+                st.session_state.fmc_results, st.session_state.fmc_error, st.session_state.fmc_revision = None, None, None
+            else:
+                st.toast("⚠️ Por favor, insira um código de desenho.", icon="📝")
+                st.session_state.search_triggered = False
+    with col2:
+        if st.button("🧹 Limpar Tudo", use_container_width=True, type="secondary"):
+            st.session_state.drawing_code = ""
+            st.session_state.search_triggered = False
+            st.session_state.stop_search = False
+            st.session_state.web_results, st.session_state.web_error, st.session_state.web_revision = None, None, None
+            st.session_state.desativados_results, st.session_state.desativados_error, st.session_state.desativados_revision = None, None, None
+            st.session_state.fmc_results, st.session_state.fmc_error, st.session_state.fmc_revision = None, None, None
+            st.rerun() # Força o rerun para limpar o input também
+    with col3:
+        if st.button("🛑 Parar Buscas", use_container_width=True, type="secondary"):
+            st.session_state.stop_search = True
+            st.toast("🛑 Buscas subsequentes interrompidas.", icon="✋")
+
+# --- Lógica de Busca (executada se 'search_triggered' e houver código) ---
+if st.session_state.search_triggered and st.session_state.drawing_code:
+    code_to_search = st.session_state.drawing_code
+
+    # 1. Busca na Web
+    if not st.session_state.stop_search:
+        with st.spinner("📡 Buscando na Web... Por favor, aguarde."):
+            try:
+                urls, latest_rev = get_latest_drawing_urls(
+                    "http://rio1web.net.fmcti.com/ipd/fmc_released_legacy/Desenhos/Produtos",
+                    code_to_search
+                )
+                st.session_state.web_results = urls
+                st.session_state.web_revision = latest_rev
+                # st.session_state.stop_search = True # Comentar para continuar buscando se desejar
+            except Exception as e:
+                st.session_state.web_error = f"Web: {e}"
+
+    # 2. Busca na rede local - Desativados
+    if not st.session_state.stop_search:
+        with st.spinner("📁 Buscando na Rede Local (Desativados)..."):
+            try:
+                network_path_desativados = r"\\rio-data-srv\arquivo\Desativados" # Use seu caminho real
+                # Checar se o caminho existe (opcional, mas bom para feedback rápido)
+                if not os.path.exists(network_path_desativados):
+                     st.session_state.desativados_error = f"Rede (Desativados): Caminho '{network_path_desativados}' não acessível."
+                else:
+                    local_files, latest_rev = get_latest_drawing_paths(
+                        network_path_desativados, code_to_search, format_drawing_code_desativados
+                    )
+                    formatted_code_des = format_drawing_code_desativados(code_to_search)
+                    # O nome do desenho para agrupar páginas deve incluir a revisão, ex: 001-002-003-A
+                    code_with_rev = f"{formatted_code_des}-{latest_rev}" if latest_rev else formatted_code_des
+
+                    # Agrupar arquivos por página para esta revisão
+                    st.session_state.desativados_results = group_local_files_by_page(local_files, formatted_code_des, latest_rev)
+                    st.session_state.desativados_revision = latest_rev
+                    # st.session_state.stop_search = True
+            except Exception as e:
+                st.session_state.desativados_error = f"Rede (Desativados): {e}"
+
+    # 3. Busca na rede local - FMC
+    if not st.session_state.stop_search:
+        with st.spinner("🗄️ Buscando na Rede Local (FMC)..."):
+            try:
+                network_path_fmc = r"\\rio-data-srv\arquivo\FMC" # Use seu caminho real
+                if not os.path.exists(network_path_fmc):
+                     st.session_state.fmc_error = f"Rede (FMC): Caminho '{network_path_fmc}' não acessível."
+                else:
+                    local_files, latest_rev = get_latest_drawing_paths(
+                        network_path_fmc, code_to_search, format_drawing_code_fmc
+                    )
+                    formatted_code_fmc = format_drawing_code_fmc(code_to_search)
+                    code_with_rev = f"{formatted_code_fmc}-{latest_rev}" if latest_rev else formatted_code_fmc
+                    
+                    st.session_state.fmc_results = group_local_files_by_page(local_files, formatted_code_fmc, latest_rev)
+                    st.session_state.fmc_revision = latest_rev
+                    # st.session_state.stop_search = True
+            except Exception as e:
+                st.session_state.fmc_error = f"Rede (FMC): {e}"
+    
+    st.session_state.search_triggered = False # Resetar para não re-executar automaticamente
+
+
+# --- Área de Resultados em Abas ---
+if st.session_state.drawing_code and (st.session_state.web_results or st.session_state.web_error or
+                                      st.session_state.desativados_results or st.session_state.desativados_error or
+                                      st.session_state.fmc_results or st.session_state.fmc_error):
+
+    tab_web, tab_desativados, tab_fmc = st.tabs(["🌐 Web", "📁 Rede - Desativados", "🗄️ Rede - FMC"])
+
+    with tab_web:
+        st.subheader("🌐 Resultados da Web")
+        if st.session_state.web_results:
+            st.success(f"✅ Revisão mais recente encontrada: {st.session_state.web_revision}")
+            st.markdown('<div class="result-container">', unsafe_allow_html=True)
+            for i, url in enumerate(st.session_state.web_results):
+                col_file, col_button = st.columns([4,1])
+                with col_file:
+                    st.markdown(f"<div class='file-entry'><span>📄 {url.split('/')[-1]}</span></div>", unsafe_allow_html=True)
+                    # st.caption(url) # Mostrar URL completa como caption
+                with col_button:
+                     # Para baixar arquivos individuais da web, precisamos de uma função que baixe e ofereça como bytes
+                    try:
+                        file_content_response = requests.get(url, stream=True)
+                        file_content_response.raise_for_status()
+                        file_bytes = BytesIO(file_content_response.content)
+                        st.download_button(
+                            label="📥",
+                            data=file_bytes,
+                            file_name=url.split('/')[-1],
+                            mime='application/octet-stream', # ou 'image/tiff'
+                            key=f"web_dl_{i}",
+                            help=f"Baixar {url.split('/')[-1]}"
+                        )
+                    except Exception as e:
+                        st.error(f"Erro DL: {e}")
+
+            if len(st.session_state.web_results) > 0: # Oferecer ZIP se houver algum arquivo
+                zip_buffer, zip_name = create_zip_from_urls(
+                    st.session_state.web_results,
+                    f"{st.session_state.drawing_code}-WEB-Rev{st.session_state.web_revision}"
+                )
+                st.download_button(
+                    label=f"📦 Baixar Todos (Rev. {st.session_state.web_revision})",
+                    data=zip_buffer,
+                    file_name=zip_name,
+                    mime="application/zip",
+                    use_container_width=True
+                )
+            st.markdown('</div>', unsafe_allow_html=True)
+        elif st.session_state.web_error:
+            st.warning(f"⚠️ {st.session_state.web_error}")
+        else:
+            st.info("ℹ️ Nenhuma busca realizada ou nenhum resultado para a Web.")
+
+    with tab_desativados:
+        st.subheader("📁 Resultados da Rede - Desativados")
+        if st.session_state.desativados_results:
+            rev = st.session_state.desativados_revision
+            st.success(f"✅ Revisão mais recente encontrada: {rev if rev else 'N/A'}")
+            st.markdown('<div class="result-container">', unsafe_allow_html=True)
+            
+            all_files_for_zip = []
+            for page, files_in_page in sorted(st.session_state.desativados_results.items()):
+                st.markdown(f"**Página {page}:**")
+                for i, file_path in enumerate(files_in_page):
+                    all_files_for_zip.append(file_path)
+                    col_file, col_button = st.columns([4,1])
+                    with col_file:
+                        st.markdown(f"<div class='file-entry'><span>📄 {os.path.basename(file_path)}</span></div>", unsafe_allow_html=True)
+                        # st.caption(file_path)
+                    with col_button:
+                        with open(file_path, "rb") as fp:
+                            st.download_button(
+                                label="📥",
+                                data=fp,
+                                file_name=os.path.basename(file_path),
+                                key=f"des_pg{page}_file{i}",
+                                help=f"Baixar {os.path.basename(file_path)}"
+                            )
+                # Zip por página (se mais de um arquivo na página) - Opcional
+                # if len(files_in_page) > 1:
+                #     zip_buffer, zip_name = create_zip_from_paths(files_in_page, f"{st.session_state.drawing_code}-DES-Rev{rev}-Pg{page}")
+                #     st.download_button(label=f"📦 Baixar Página {page} (ZIP)", data=zip_buffer, file_name=zip_name, mime="application/zip")
+
+            if all_files_for_zip: # ZIP de todos os arquivos da revisão
+                 zip_buffer, zip_name = create_zip_from_paths(all_files_for_zip, f"{st.session_state.drawing_code}-DESATIVADOS-Rev{rev}")
+                 st.download_button(
+                    label=f"📦 Baixar Todos (Rev. {rev})",
+                    data=zip_buffer,
+                    file_name=zip_name,
+                    mime="application/zip",
+                    use_container_width=True
+                )
+            st.markdown('</div>', unsafe_allow_html=True)
+        elif st.session_state.desativados_error:
+            st.warning(f"⚠️ {st.session_state.desativados_error}")
+        else:
+            st.info("ℹ️ Nenhuma busca realizada ou nenhum resultado para Rede - Desativados.")
+
+    with tab_fmc:
+        st.subheader("🗄️ Resultados da Rede - FMC")
+        if st.session_state.fmc_results:
+            rev = st.session_state.fmc_revision
+            st.success(f"✅ Revisão mais recente encontrada: {rev if rev else 'N/A'}")
+            st.markdown('<div class="result-container">', unsafe_allow_html=True)
+
+            all_files_for_zip = []
+            for page, files_in_page in sorted(st.session_state.fmc_results.items()):
+                st.markdown(f"**Página {page}:**")
+                for i, file_path in enumerate(files_in_page):
+                    all_files_for_zip.append(file_path)
+                    col_file, col_button = st.columns([4,1])
+                    with col_file:
+                        st.markdown(f"<div class='file-entry'><span>📄 {os.path.basename(file_path)}</span></div>", unsafe_allow_html=True)
+                        # st.caption(file_path)
+                    with col_button:
+                        with open(file_path, "rb") as fp:
+                            st.download_button(
+                                label="📥",
+                                data=fp,
+                                file_name=os.path.basename(file_path),
+                                key=f"fmc_pg{page}_file{i}",
+                                help=f"Baixar {os.path.basename(file_path)}"
+                            )
+            if all_files_for_zip:
+                 zip_buffer, zip_name = create_zip_from_paths(all_files_for_zip, f"{st.session_state.drawing_code}-FMC-Rev{rev}")
+                 st.download_button(
+                    label=f"📦 Baixar Todos (Rev. {rev})",
+                    data=zip_buffer,
+                    file_name=zip_name,
+                    mime="application/zip",
+                    use_container_width=True
+                )
+            st.markdown('</div>', unsafe_allow_html=True)
+        elif st.session_state.fmc_error:
+            st.warning(f"⚠️ {st.session_state.fmc_error}")
+        else:
+            st.info("ℹ️ Nenhuma busca realizada ou nenhum resultado para Rede - FMC.")
+
+# Mensagem inicial se nada foi buscado ainda
+if not st.session_state.drawing_code and not (st.session_state.web_results or st.session_state.desativados_results or st.session_state.fmc_results):
+    st.info("✨ Digite um código de desenho e clique em 'Buscar Desenho' para iniciar.")
+
