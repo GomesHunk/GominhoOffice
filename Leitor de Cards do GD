@@ -1,0 +1,144 @@
+"""
+Este script Python realiza as seguintes funções:
+
+1. Permite ao usuário selecionar uma pasta contendo imagens de cartões de gerenciamento diário.
+2. Renomeia automaticamente arquivos com extensão .jfif para .jpg, garantindo compatibilidade com bibliotecas de processamento de imagem.
+3. Utiliza OCR (Reconhecimento Óptico de Caracteres) com Tesseract para extrair informações específicas dos cartões, incluindo:
+   - ID
+   - CDD
+   - ACT
+   - PDD0
+   - PDD1
+   - PDD2
+   - HH EST
+   - HH PROC
+   - CONC.ACT
+4. Exibe os dados extraídos em uma interface gráfica com uma tabela, permitindo ao usuário revisar as informações.
+5. Permite ao usuário exportar os dados extraídos para um arquivo CSV.
+
+Configuração necessária:
+- O caminho do executável do Tesseract deve ser definido como:
+  'C:\\Users\\gomesg1\\AppData\\Local\\Programs\\Tesseract-OCR\\tesseract.exe'
+
+A detecção de cor foi desativada neste script.
+"""
+
+import pytesseract
+from PIL import Image
+import os
+import csv
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from tkinter import ttk
+
+# Caminho do executável do Tesseract
+pytesseract.pytesseract.tesseract_cmd = r'C:\Users\gomesg1\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
+
+# Função para extrair campos de texto usando OCR
+def extract_fields(text):
+    fields = {
+        "ID": "",
+        "CDD": "",
+        "ACT": "",
+        "PDD0": "",
+        "PDD1": "",
+        "PDD2": "",
+        "HH EST": "",
+        "HH PROC": "",
+        "CONC.ACT": "",
+        "Status CDD": ""
+    }
+    lines = text.split('\n')
+    for line in lines:
+        if "ID:" in line:
+            fields["ID"] = line.split("ID:")[1].strip()
+        elif "CDD" in line:
+            fields["CDD"] = line.split("CDD")[1].strip(": ").strip()
+        elif "ACT" in line:
+            fields["ACT"] = line.split("ACT:")[1].strip()
+        elif "PDD0" in line:
+            fields["PDD0"] = line.split("PDD0:")[1].strip()
+        elif "PDD1" in line:
+            fields["PDD1"] = line.split("PDD1:")[1].strip()
+        elif "PDD2" in line:
+            fields["PDD2"] = line.split("PDD2:")[1].strip()
+        elif "HHEst" in line:
+            parts = line.split("PROC:")
+            fields["HH EST"] = parts[0].split("HHEst:")[1].strip()
+            fields["HH PROC"] = parts[1].strip() if len(parts) > 1 else ""
+        elif "CONC.ACT" in line:
+            fields["CONC.ACT"] = line.split("CONC.ACT:")[1].strip()
+    return fields
+
+# Renomeia arquivos .jfif para .jpg
+def rename_jfif_to_jpg(folder_path):
+    for filename in os.listdir(folder_path):
+        if filename.lower().endswith('.jfif'):
+            new_filename = filename[:-5] + '.jpg'
+            os.rename(os.path.join(folder_path, filename), os.path.join(folder_path, new_filename))
+            print(f"Renomeado: {filename} -> {new_filename}")
+
+# Processa imagens da pasta
+def process_images(folder_path):
+    global data
+    data = []
+    for filename in os.listdir(folder_path):
+        if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+            image_path = os.path.join(folder_path, filename)
+            print(f"Tentando abrir imagem: {image_path}")
+            image = Image.open(image_path)
+            text = pytesseract.image_to_string(image, lang='por')
+            fields = extract_fields(text)
+            data.append(fields)
+    return data
+
+# Exibe os dados na interface
+def display_data(data):
+    for row in tree.get_children():
+        tree.delete(row)
+    for fields in data:
+        tree.insert("", "end", values=list(fields.values()))
+
+# Exporta os dados para CSV
+def export_to_csv(data):
+    if data:
+        with open('dados_extraidos.csv', mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.DictWriter(file, fieldnames=data[0].keys())
+            writer.writeheader()
+            writer.writerows(data)
+        messagebox.showinfo("Sucesso", "Arquivo 'dados_extraidos.csv' salvo com sucesso.")
+    else:
+        messagebox.showwarning("Aviso", "Nenhum dado para exportar.")
+
+# Seleciona a pasta e inicia o processamento
+def select_folder():
+    folder_path = filedialog.askdirectory()
+    if folder_path:
+        rename_jfif_to_jpg(folder_path)
+        data = process_images(folder_path)
+        display_data(data)
+
+# Interface gráfica
+root = tk.Tk()
+root.title("Leitor de Cartões GD")
+root.geometry("854x480")
+
+frame = ttk.Frame(root, padding="10")
+frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+select_button = ttk.Button(frame, text="Selecionar Pasta", command=select_folder)
+select_button.grid(row=0, column=0, padx=5, pady=5)
+
+export_button = ttk.Button(frame, text="Exportar para CSV", command=lambda: export_to_csv(data))
+export_button.grid(row=0, column=1, padx=5, pady=5)
+
+columns = ("ID", "CDD", "ACT", "PDD0", "PDD1", "PDD2", "HH EST", "HH PROC", "CONC.ACT", "Status CDD")
+tree = ttk.Treeview(frame, columns=columns, show="headings", height=18)
+
+for col in columns:
+    tree.heading(col, text=col)
+    tree.column(col, width=100, anchor="center")
+
+tree.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+root.mainloop()
