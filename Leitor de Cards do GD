@@ -1,144 +1,465 @@
 """
-Este script Python realiza as seguintes funções:
+Leitor de Cartões de Gerenciamento Diário
+Versão melhorada com tratamento de erros, interface aprimorada e código mais robusto.
 
-1. Permite ao usuário selecionar uma pasta contendo imagens de cartões de gerenciamento diário.
-2. Renomeia automaticamente arquivos com extensão .jfif para .jpg, garantindo compatibilidade com bibliotecas de processamento de imagem.
-3. Utiliza OCR (Reconhecimento Óptico de Caracteres) com Tesseract para extrair informações específicas dos cartões, incluindo:
-   - ID
-   - CDD
-   - ACT
-   - PDD0
-   - PDD1
-   - PDD2
-   - HH EST
-   - HH PROC
-   - CONC.ACT
-4. Exibe os dados extraídos em uma interface gráfica com uma tabela, permitindo ao usuário revisar as informações.
-5. Permite ao usuário exportar os dados extraídos para um arquivo CSV.
-
-Configuração necessária:
-- O caminho do executável do Tesseract deve ser definido como:
-  'C:\\Users\\gomesg1\\AppData\\Local\\Programs\\Tesseract-OCR\\tesseract.exe'
-
-A detecção de cor foi desativada neste script.
+Este script realiza as seguintes funções:
+1. Permite selecionar uma pasta contendo imagens de cartões
+2. Renomeia arquivos .jfif para .jpg automaticamente
+3. Extrai informações usando OCR (Tesseract)
+4. Exibe dados em uma interface gráfica melhorada
+5. Permite exportar para CSV com opção de escolher local de salvamento
 """
 
 import pytesseract
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 import os
 import csv
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
+import re
+import threading
+from pathlib import Path
+import logging
+from typing import Dict, List, Optional
 
-# Caminho do executável do Tesseract
-pytesseract.pytesseract.tesseract_cmd = r'C:\Users\gomesg1\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
+# Configuração de logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Função para extrair campos de texto usando OCR
-def extract_fields(text):
-    fields = {
-        "ID": "",
-        "CDD": "",
-        "ACT": "",
-        "PDD0": "",
-        "PDD1": "",
-        "PDD2": "",
-        "HH EST": "",
-        "HH PROC": "",
-        "CONC.ACT": "",
-        "Status CDD": ""
-    }
-    lines = text.split('\n')
-    for line in lines:
-        if "ID:" in line:
-            fields["ID"] = line.split("ID:")[1].strip()
-        elif "CDD" in line:
-            fields["CDD"] = line.split("CDD")[1].strip(": ").strip()
-        elif "ACT" in line:
-            fields["ACT"] = line.split("ACT:")[1].strip()
-        elif "PDD0" in line:
-            fields["PDD0"] = line.split("PDD0:")[1].strip()
-        elif "PDD1" in line:
-            fields["PDD1"] = line.split("PDD1:")[1].strip()
-        elif "PDD2" in line:
-            fields["PDD2"] = line.split("PDD2:")[1].strip()
-        elif "HHEst" in line:
-            parts = line.split("PROC:")
-            fields["HH EST"] = parts[0].split("HHEst:")[1].strip()
-            fields["HH PROC"] = parts[1].strip() if len(parts) > 1 else ""
-        elif "CONC.ACT" in line:
-            fields["CONC.ACT"] = line.split("CONC.ACT:")[1].strip()
-    return fields
 
-# Renomeia arquivos .jfif para .jpg
-def rename_jfif_to_jpg(folder_path):
-    for filename in os.listdir(folder_path):
-        if filename.lower().endswith('.jfif'):
-            new_filename = filename[:-5] + '.jpg'
-            os.rename(os.path.join(folder_path, filename), os.path.join(folder_path, new_filename))
-            print(f"Renomeado: {filename} -> {new_filename}")
+class TesseractConfig:
+    """Classe para gerenciar a configuração do Tesseract"""
+    
+    @staticmethod
+    def find_tesseract():
+        """Encontra automaticamente o executável do Tesseract"""
+        possible_paths = [
+            r'C:\Users\gomesg1\AppData\Local\Programs\Tesseract-OCR\tesseract.exe',
+            r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+            '/usr/bin/tesseract',
+            '/usr/local/bin/tesseract',
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+        
+        # Tenta encontrar no PATH
+        import shutil
+        tesseract_path = shutil.which('tesseract')
+        if tesseract_path:
+            return tesseract_path
+            
+        return None
+    
+    @staticmethod
+    def setup_tesseract():
+        """Configura o Tesseract"""
+        tesseract_path = TesseractConfig.find_tesseract()
+        if tesseract_path:
+            pytesseract.pytesseract.tesseract_cmd = tesseract_path
+            logger.info(f"Tesseract configurado em: {tesseract_path}")
+            return True
+        else:
+            logger.error("Tesseract não encontrado no sistema")
+            return False
 
-# Processa imagens da pasta
-def process_images(folder_path):
-    global data
-    data = []
-    for filename in os.listdir(folder_path):
-        if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
-            image_path = os.path.join(folder_path, filename)
-            print(f"Tentando abrir imagem: {image_path}")
+
+class ImageProcessor:
+    """Classe para processamento de imagens"""
+    
+    @staticmethod
+    def enhance_image(image: Image.Image) -> Image.Image:
+        """Melhora a qualidade da imagem para OCR"""
+        try:
+            # Converte para escala de cinza
+            if image.mode != 'L':
+                image = image.convert('L')
+            
+            # Aumenta o contraste
+            enhancer = ImageEnhance.Contrast(image)
+            image = enhancer.enhance(2.0)
+            
+            # Aumenta a nitidez
+            enhancer = ImageEnhance.Sharpness(image)
+            image = enhancer.enhance(2.0)
+            
+            # Redimensiona se muito pequena
+            if image.width < 800:
+                ratio = 800 / image.width
+                new_height = int(image.height * ratio)
+                image = image.resize((800, new_height), Image.Resampling.LANCZOS)
+            
+            return image
+        except Exception as e:
+            logger.error(f"Erro ao processar imagem: {e}")
+            return image
+
+
+class TextExtractor:
+    """Classe para extração de texto usando OCR"""
+    
+    @staticmethod
+    def extract_text_from_image(image_path: str) -> str:
+        """Extrai texto de uma imagem usando OCR"""
+        try:
             image = Image.open(image_path)
-            text = pytesseract.image_to_string(image, lang='por')
-            fields = extract_fields(text)
-            data.append(fields)
-    return data
+            enhanced_image = ImageProcessor.enhance_image(image)
+            
+            # Configurações customizadas do Tesseract
+            custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz:.-/% '
+            
+            text = pytesseract.image_to_string(
+                enhanced_image, 
+                lang='por+eng',
+                config=custom_config
+            )
+            
+            return text.strip()
+        except Exception as e:
+            logger.error(f"Erro ao extrair texto de {image_path}: {e}")
+            return ""
 
-# Exibe os dados na interface
-def display_data(data):
-    for row in tree.get_children():
-        tree.delete(row)
-    for fields in data:
-        tree.insert("", "end", values=list(fields.values()))
 
-# Exporta os dados para CSV
-def export_to_csv(data):
-    if data:
-        with open('dados_extraidos.csv', mode='w', newline='', encoding='utf-8') as file:
-            writer = csv.DictWriter(file, fieldnames=data[0].keys())
-            writer.writeheader()
-            writer.writerows(data)
-        messagebox.showinfo("Sucesso", "Arquivo 'dados_extraidos.csv' salvo com sucesso.")
-    else:
-        messagebox.showwarning("Aviso", "Nenhum dado para exportar.")
+class FieldExtractor:
+    """Classe para extração de campos específicos do texto"""
+    
+    @staticmethod
+    def extract_fields(text: str) -> Dict[str, str]:
+        """Extrai campos específicos do texto usando regex"""
+        fields = {
+            "ID": "",
+            "CDD": "",
+            "ACT": "",
+            "PDD0": "",
+            "PDD1": "",
+            "PDD2": "",
+            "HH EST": "",
+            "HH PROC": "",
+            "CONC.ACT": "",
+            "Status CDD": ""
+        }
+        
+        # Padrões de regex para cada campo
+        patterns = {
+            "ID": r'ID[:\s]*([A-Za-z0-9\-]+)',
+            "CDD": r'CDD[:\s]*([A-Za-z0-9\-\.]+)',
+            "ACT": r'ACT[:\s]*([A-Za-z0-9\-\./%]+)',
+            "PDD0": r'PDD0[:\s]*([A-Za-z0-9\-\./%]+)',
+            "PDD1": r'PDD1[:\s]*([A-Za-z0-9\-\./%]+)',
+            "PDD2": r'PDD2[:\s]*([A-Za-z0-9\-\./%]+)',
+            "HH EST": r'HH\s*Est[:\s]*([0-9\-\.]+)',
+            "HH PROC": r'PROC[:\s]*([0-9\-\.]+)',
+            "CONC.ACT": r'CONC\.ACT[:\s]*([A-Za-z0-9\-\./%]+)',
+        }
+        
+        # Aplica os padrões
+        for field, pattern in patterns.items():
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                fields[field] = match.group(1).strip()
+        
+        # Lógica específica para HH EST e HH PROC em uma linha
+        hh_pattern = r'HH\s*Est[:\s]*([0-9\-\.]+).*?PROC[:\s]*([0-9\-\.]+)'
+        hh_match = re.search(hh_pattern, text, re.IGNORECASE)
+        if hh_match:
+            fields["HH EST"] = hh_match.group(1).strip()
+            fields["HH PROC"] = hh_match.group(2).strip()
+        
+        return fields
 
-# Seleciona a pasta e inicia o processamento
-def select_folder():
-    folder_path = filedialog.askdirectory()
-    if folder_path:
-        rename_jfif_to_jpg(folder_path)
-        data = process_images(folder_path)
-        display_data(data)
 
-# Interface gráfica
-root = tk.Tk()
-root.title("Leitor de Cartões GD")
-root.geometry("854x480")
+class FileManager:
+    """Classe para gerenciamento de arquivos"""
+    
+    @staticmethod
+    def rename_jfif_to_jpg(folder_path: str) -> int:
+        """Renomeia arquivos .jfif para .jpg"""
+        renamed_count = 0
+        try:
+            for filename in os.listdir(folder_path):
+                if filename.lower().endswith('.jfif'):
+                    old_path = os.path.join(folder_path, filename)
+                    new_filename = filename[:-5] + '.jpg'
+                    new_path = os.path.join(folder_path, new_filename)
+                    
+                    if not os.path.exists(new_path):
+                        os.rename(old_path, new_path)
+                        logger.info(f"Renomeado: {filename} -> {new_filename}")
+                        renamed_count += 1
+                    else:
+                        logger.warning(f"Arquivo {new_filename} já existe, pulando {filename}")
+        except Exception as e:
+            logger.error(f"Erro ao renomear arquivos: {e}")
+        
+        return renamed_count
+    
+    @staticmethod
+    def get_image_files(folder_path: str) -> List[str]:
+        """Retorna lista de arquivos de imagem na pasta"""
+        extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp')
+        image_files = []
+        
+        try:
+            for filename in os.listdir(folder_path):
+                if filename.lower().endswith(extensions):
+                    image_files.append(os.path.join(folder_path, filename))
+        except Exception as e:
+            logger.error(f"Erro ao listar arquivos: {e}")
+        
+        return sorted(image_files)
 
-frame = ttk.Frame(root, padding="10")
-frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-select_button = ttk.Button(frame, text="Selecionar Pasta", command=select_folder)
-select_button.grid(row=0, column=0, padx=5, pady=5)
+class CardReaderGUI:
+    """Interface gráfica principal"""
+    
+    def __init__(self):
+        self.root = tk.Tk()
+        self.data = []
+        self.setup_ui()
+        self.setup_tesseract()
+    
+    def setup_tesseract(self):
+        """Configura o Tesseract na inicialização"""
+        if not TesseractConfig.setup_tesseract():
+            messagebox.showerror(
+                "Erro de Configuração",
+                "Tesseract OCR não foi encontrado no sistema.\n"
+                "Por favor, instale o Tesseract OCR:\n"
+                "https://github.com/tesseract-ocr/tesseract"
+            )
+    
+    def setup_ui(self):
+        """Configura a interface do usuário"""
+        self.root.title("Leitor de Cartões GD - Versão Melhorada")
+        self.root.geometry("1000x600")
+        self.root.minsize(800, 500)
+        
+        # Frame principal
+        main_frame = ttk.Frame(self.root, padding="10")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Configurar redimensionamento
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+        main_frame.rowconfigure(2, weight=1)
+        
+        # Frame para botões
+        button_frame = ttk.Frame(main_frame)
+        button_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+        
+        # Botões
+        self.select_button = ttk.Button(
+            button_frame, 
+            text="📁 Selecionar Pasta", 
+            command=self.select_folder
+        )
+        self.select_button.grid(row=0, column=0, padx=(0, 5))
+        
+        self.export_button = ttk.Button(
+            button_frame, 
+            text="💾 Exportar CSV", 
+            command=self.export_to_csv,
+            state='disabled'
+        )
+        self.export_button.grid(row=0, column=1, padx=5)
+        
+        self.clear_button = ttk.Button(
+            button_frame,
+            text="🗑️ Limpar Dados",
+            command=self.clear_data
+        )
+        self.clear_button.grid(row=0, column=2, padx=5)
+        
+        # Barra de progresso
+        self.progress_var = tk.StringVar(value="Pronto para processar")
+        self.progress_label = ttk.Label(main_frame, textvariable=self.progress_var)
+        self.progress_label.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        
+        self.progress_bar = ttk.Progressbar(main_frame, mode='determinate')
+        self.progress_bar.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(25, 5))
+        
+        # Tabela
+        self.setup_treeview(main_frame)
+        
+        # Barra de status
+        self.status_var = tk.StringVar(value="Pronto")
+        status_bar = ttk.Label(
+            main_frame, 
+            textvariable=self.status_var, 
+            relief=tk.SUNKEN, 
+            anchor=tk.W
+        )
+        status_bar.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E))
+        
+    def setup_treeview(self, parent):
+        """Configura a tabela de dados"""
+        # Frame para a tabela
+        tree_frame = ttk.Frame(parent)
+        tree_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        tree_frame.columnconfigure(0, weight=1)
+        tree_frame.rowconfigure(0, weight=1)
+        
+        # Colunas
+        columns = ("ID", "CDD", "ACT", "PDD0", "PDD1", "PDD2", "HH EST", "HH PROC", "CONC.ACT", "Status CDD")
+        
+        # Treeview
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings")
+        
+        # Configurar colunas
+        for col in columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=90, anchor="center", minwidth=70)
+        
+        # Scrollbars
+        v_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        h_scrollbar = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
+        
+        self.tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+        
+        # Grid layout
+        self.tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        v_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        h_scrollbar.grid(row=1, column=0, sticky=(tk.W, tk.E))
+        
+    def select_folder(self):
+        """Seleciona pasta e inicia processamento"""
+        folder_path = filedialog.askdirectory(title="Selecione a pasta com as imagens dos cartões")
+        if folder_path:
+            # Executar em thread separada para não travar a UI
+            thread = threading.Thread(target=self.process_folder, args=(folder_path,))
+            thread.daemon = True
+            thread.start()
+    
+    def process_folder(self, folder_path: str):
+        """Processa a pasta selecionada"""
+        try:
+            self.update_status("Processando...")
+            self.progress_var.set("Renomeando arquivos...")
+            
+            # Renomear arquivos .jfif
+            renamed_count = FileManager.rename_jfif_to_jpg(folder_path)
+            if renamed_count > 0:
+                self.progress_var.set(f"{renamed_count} arquivos renomeados")
+            
+            # Obter lista de imagens
+            image_files = FileManager.get_image_files(folder_path)
+            
+            if not image_files:
+                messagebox.showwarning("Aviso", "Nenhuma imagem encontrada na pasta selecionada.")
+                self.update_status("Nenhuma imagem encontrada")
+                return
+            
+            # Processar imagens
+            self.data = []
+            total_files = len(image_files)
+            
+            for i, image_path in enumerate(image_files):
+                filename = os.path.basename(image_path)
+                self.progress_var.set(f"Processando {filename} ({i+1}/{total_files})")
+                self.progress_bar['value'] = ((i + 1) / total_files) * 100
+                
+                # Extrair texto
+                text = TextExtractor.extract_text_from_image(image_path)
+                
+                # Extrair campos
+                fields = FieldExtractor.extract_fields(text)
+                
+                # Adicionar nome do arquivo para referência
+                fields['Arquivo'] = filename
+                
+                self.data.append(fields)
+                
+                # Atualizar UI
+                self.root.after(0, self.update_display)
+            
+            # Finalizar
+            self.progress_var.set(f"Processamento concluído - {total_files} imagens processadas")
+            self.progress_bar['value'] = 100
+            self.update_status(f"{total_files} cartões processados")
+            
+            # Habilitar botão de exportar
+            self.export_button['state'] = 'normal'
+            
+        except Exception as e:
+            error_msg = f"Erro durante o processamento: {str(e)}"
+            logger.error(error_msg)
+            messagebox.showerror("Erro", error_msg)
+            self.update_status("Erro no processamento")
+    
+    def update_display(self):
+        """Atualiza a exibição da tabela"""
+        # Limpar tabela
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        
+        # Adicionar dados
+        for fields in self.data:
+            values = [fields.get(col, "") for col in ("ID", "CDD", "ACT", "PDD0", "PDD1", "PDD2", "HH EST", "HH PROC", "CONC.ACT", "Status CDD")]
+            self.tree.insert("", "end", values=values)
+    
+    def export_to_csv(self):
+        """Exporta dados para CSV"""
+        if not self.data:
+            messagebox.showwarning("Aviso", "Nenhum dado para exportar.")
+            return
+        
+        # Escolher local para salvar
+        file_path = filedialog.asksaveasfilename(
+            title="Salvar arquivo CSV",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, mode='w', newline='', encoding='utf-8') as file:
+                    if self.data:
+                        fieldnames = list(self.data[0].keys())
+                        writer = csv.DictWriter(file, fieldnames=fieldnames)
+                        writer.writeheader()
+                        writer.writerows(self.data)
+                
+                messagebox.showinfo("Sucesso", f"Dados exportados com sucesso para:\n{file_path}")
+                self.update_status(f"Dados exportados para {os.path.basename(file_path)}")
+                
+            except Exception as e:
+                error_msg = f"Erro ao exportar: {str(e)}"
+                logger.error(error_msg)
+                messagebox.showerror("Erro", error_msg)
+    
+    def clear_data(self):
+        """Limpa os dados da tabela"""
+        if messagebox.askyesno("Confirmar", "Deseja limpar todos os dados?"):
+            self.data = []
+            self.update_display()
+            self.export_button['state'] = 'disabled'
+            self.progress_var.set("Dados limpos - Pronto para processar")
+            self.progress_bar['value'] = 0
+            self.update_status("Dados limpos")
+    
+    def update_status(self, message: str):
+        """Atualiza a barra de status"""
+        self.status_var.set(message)
+        self.root.update_idletasks()
+    
+    def run(self):
+        """Inicia a aplicação"""
+        self.root.mainloop()
 
-export_button = ttk.Button(frame, text="Exportar para CSV", command=lambda: export_to_csv(data))
-export_button.grid(row=0, column=1, padx=5, pady=5)
 
-columns = ("ID", "CDD", "ACT", "PDD0", "PDD1", "PDD2", "HH EST", "HH PROC", "CONC.ACT", "Status CDD")
-tree = ttk.Treeview(frame, columns=columns, show="headings", height=18)
+def main():
+    """Função principal"""
+    try:
+        app = CardReaderGUI()
+        app.run()
+    except Exception as e:
+        logger.error(f"Erro fatal: {e}")
+        messagebox.showerror("Erro Fatal", f"Erro inesperado: {str(e)}")
 
-for col in columns:
-    tree.heading(col, text=col)
-    tree.column(col, width=100, anchor="center")
 
-tree.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
-
-root.mainloop()
+if __name__ == "__main__":
+    main()
