@@ -1,0 +1,23 @@
+Gostaria de um sistema capaz de acelerar meu preenchimento de informações numa planilha de excel.
+
+Hoje o cenário é o seguinte, temos um Gerenciamento Diário que é feito presencialmente com os integrantes da equipe. Nós preenchemos um card com as informações em papel e colamos na parede.
+
+Esse card contém informações de ID, na qual identificamos cada tarefa, e nosso processo de liberação consiste em um criador, um revisor e um aprovador. Dessa forma a tag do ID fica como Número.1 se for criador, Número.2 se for revisor e Número.3 se for aprovador.
+
+Dividimos nosso setor em Flow Control e Well Control.
+
+Dessa forma a padronização dos cards fica na planilha como FC-2025-ID.
+
+Outros campos que preenchemos são:
+
+Descrição da tarefa;
+CDD0: Prazo contratual da entrega
+CDD1: Prazo caso tenha sido alterado o acordo contratual
+Para cada função existe uma pessoa responsável.
+PDD0: Prazo pessoal para entrega da atividade
+PDD1:
+PDD2:
+HH Estimado: Horas estimadas para a atividade
+HH Processado: Horas realmente usadas durante a atividade
+CONC.ACT: Data de conclusão da atividade (Tem que ser igual para todas as pessoas, mesmo que cada um tenha feito um PDD diferente)
+posso anexar a planilha de excel em que fazemos as inserções manualmente de cada card hoje e gera gráficos e dados. Gostaria de sugestões para deixar esse processo o mais automático possível.
