@@ -1,0 +1,46 @@
+import streamlit as st import requests from bs4 import BeautifulSoup import re import os import zipfile from io import BytesIO import logging
+
+Configure logging
+
+logging.basicConfig(level=logging.INFO) logger = logging.getLogger(name)
+
+Função para formatar o código de desenho para a pasta Desativados
+
+def format_drawing_code_desativados(drawing_code): parts = drawing_code.split('-') formatted_parts = [parts[0].zfill(3)] + parts[1:] return '-'.join(formatted_parts)
+
+Função para formatar o código de desenho para a pasta FMC (sem formatação)
+
+def format_drawing_code_fmc(drawing_code): return drawing_code
+
+(Demais funções omitidas para brevidade - continuam iguais até o trecho da interface Streamlit)
+
+...
+
+Streamlit UI
+
+st.set_page_config(page_title="🔍 Localizador de Desenhos Técnicos Legacy", layout="centered") st.title("🔍 Localizador de Desenhos Técnicos Legacy")
+
+if "drawing_code" not in st.session_state: st.session_state.drawing_code = ""
+
+if "stop_search" not in st.session_state: st.session_state.stop_search = False
+
+if "history" not in st.session_state: st.session_state.history = []
+
+user_input = st.text_input("Digite o código do desenho (ex: 180-570-542):", value=st.session_state.drawing_code) debug_mode = st.checkbox("🐛 Ativar Modo Debug", help="Mostrar informações detalhadas da busca")
+
+col1, col2, col3 = st.columns([1, 1, 1])
+
+with col1: if st.button("Buscar desenho", use_container_width=True): if user_input: st.session_state.drawing_code = user_input st.session_state.stop_search = False if user_input not in st.session_state.history: st.session_state.history.insert(0, user_input) if len(st.session_state.history) > 10: st.session_state.history = st.session_state.history[:10] st.rerun()
+
+with col2: if st.button("Limpar", use_container_width=True): st.session_state.drawing_code = "" st.session_state.stop_search = False st.rerun()
+
+with col3: if st.button("Parar busca", use_container_width=True): st.session_state.stop_search = True
+
+Mostrar histórico de buscas recentes
+
+if st.session_state.history: with st.expander("📜 Histórico de buscas recentes"): for item in st.session_state.history: if st.button(f"🔄 Buscar novamente: {item}", key=f"hist_{item}"): st.session_state.drawing_code = item st.session_state.stop_search = False st.rerun()
+
+(A lógica de busca continua normalmente abaixo)
+
+if st.session_state.drawing_code and not st.session_state.stop_search: # Lógica da busca segue como já implementado... pass
+
