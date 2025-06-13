@@ -1,0 +1,314 @@
+import streamlit as st
+import requests
+from bs4 import BeautifulSoup
+import re
+import os
+import zipfile
+from io import BytesIO
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Função para formatar o código de desenho para a pasta Desativados
+def format_drawing_code_desativados(drawing_code):
+    parts = drawing_code.split('-')
+    formatted_parts = [parts[0].zfill(3)] + parts[1:]
+    return '-'.join(formatted_parts)
+
+# Função para formatar o código de desenho para a pasta FMC (sem formatação)
+def format_drawing_code_fmc(drawing_code):
+    return drawing_code
+
+# Busca na web
+def get_latest_drawing_urls(base_url, drawing_code):
+    drawing_code = format_drawing_code_desativados(drawing_code)
+    parts = drawing_code.split('-')
+    if len(parts) != 3:
+        raise ValueError("Formato inválido. Use: 'xxx-xxx-xxx'")
+
+    try:
+        response = requests.get(base_url, timeout=10)
+        if response.status_code != 200:
+            raise Exception(f"Erro ao acessar a pasta raiz: {base_url}")
+        soup = BeautifulSoup(response.content, 'html.parser')
+
+        first_level_pattern = re.compile(f"^{parts[0]}\\b.*")
+        first_level_folder = next((link['href'] for link in soup.find_all('a', href=True)
+                                   if first_level_pattern.match(link.text.strip('/'))), None)
+        if not first_level_folder:
+            raise Exception(f"Nenhuma pasta encontrada para o prefixo: {parts[0]}")
+        first_level_url = base_url.rstrip('/') + '/' + first_level_folder
+
+        response = requests.get(first_level_url, timeout=10)
+        if response.status_code != 200:
+            raise Exception(f"Erro ao acessar a subpasta: {first_level_url}")
+        soup = BeautifulSoup(response.content, 'html.parser')
+        second_level_pattern = re.compile(f"^{parts[0]}-{parts[1]}\\b.*")
+        second_level_folder = next((link['href'] for link in soup.find_all('a', href=True)
+                                    if second_level_pattern.match(link.text.strip('/'))), None)
+        if not second_level_folder:
+            raise Exception(f"Nenhuma subpasta encontrada para: {parts[0]}-{parts[1]}")
+        second_level_url = first_level_url.rstrip('/') + '/' + second_level_folder
+
+        response = requests.get(second_level_url, timeout=10)
+        if response.status_code != 200:
+            raise Exception(f"Erro ao acessar a subpasta final: {second_level_url}")
+        soup = BeautifulSoup(response.content, 'html.parser')
+
+        file_pattern = re.compile(f"^{drawing_code}(?:-\\d+)?(?:-[A-Z])?\\.tif$")
+        file_links = [link['href'] for link in soup.find_all('a', href=True) if file_pattern.match(link['href'])]
+
+        if not file_links:
+            raise Exception(f"Nenhum arquivo encontrado para: {drawing_code}")
+
+        grouped = {}
+        for file in file_links:
+            match = re.search(rf"{drawing_code}(?:-(\\d+))?(?:-([A-Z]))?\\.tif$", file)
+            revision = match.group(2) if match and match.group(2) else ''
+            if revision not in grouped:
+                grouped[revision] = []
+            grouped[revision].append(second_level_url.rstrip('/') + '/' + file)
+
+        latest_revision = sorted(grouped.keys(), reverse=True)[0]
+        return grouped[latest_revision], latest_revision
+
+    except requests.RequestException as e:
+        raise Exception(f"Erro de rede: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Erro na busca web: {str(e)}")
+
+def get_latest_drawing_paths(base_path, drawing_code, format_code_func):
+    drawing_code = format_code_func(drawing_code)
+    parts = drawing_code.split('-')
+    if len(parts) < 2:
+        raise ValueError("Formato inválido. Use: 'xxx-xxx' ou 'xxx-xxx-xxx'")
+
+    if not os.path.exists(base_path):
+        raise Exception(f"Caminho não acessível: {base_path}")
+
+    file_pattern = re.compile(
+        rf"^{re.escape(drawing_code)}(?:-\d+)?(?:-[A-Z])?\.tif$", re.IGNORECASE
+    )
+
+    found_files = []
+    searched_dirs = []
+
+    try:
+        for root, dirs, files in os.walk(base_path):
+            searched_dirs.append(root)
+            for file in files:
+                if file_pattern.fullmatch(file):
+                    found_files.append(os.path.join(root, file))
+
+        logger.info(f"Pesquisados {len(searched_dirs)} diretórios para padrão: {file_pattern.pattern}")
+        logger.info(f"Encontrados {len(found_files)} arquivos correspondentes")
+
+    except PermissionError as e:
+        raise Exception(f"Permissão negada para acessar: {base_path} - {str(e)}")
+    except Exception as e:
+        raise Exception(f"Erro ao pesquisar arquivos locais em {base_path}: {str(e)}")
+
+    return found_files
+
+def group_files_by_version_and_page(files):
+    grouped_files = {}
+    for file in files:
+        filename = os.path.basename(file)
+        match = re.search(r'-(\d+)?-?([A-Z])?\.', filename)
+        page = match.group(1) if match and match.group(1) else 'single'
+        version = match.group(2) if match and match.group(2) else ''
+        if version not in grouped_files:
+            grouped_files[version] = {}
+        if page not in grouped_files[version]:
+            grouped_files[version][page] = []
+        grouped_files[version][page].append(file)
+    return grouped_files
+
+def create_zip(files):
+    buffer = BytesIO()
+    try:
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for file_path in files:
+                if os.path.exists(file_path):
+                    zip_file.write(file_path, os.path.basename(file_path))
+    except Exception as e:
+        raise Exception(f"Erro ao criar arquivo ZIP: {str(e)}")
+    buffer.seek(0)
+    return buffer
+
+def create_zip_from_urls(urls):
+    buffer = BytesIO()
+    try:
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for url in urls:
+                try:
+                    response = requests.get(url, timeout=30)
+                    response.raise_for_status()
+                    filename = url.split('/')[-1]
+                    zip_file.writestr(filename, response.content)
+                except requests.RequestException as e:
+                    logger.warning(f"Falha ao baixar {url}: {str(e)}")
+                    continue
+    except Exception as e:
+        raise Exception(f"Erro ao criar ZIP a partir de URLs: {str(e)}")
+    buffer.seek(0)
+    return buffer
+
+# Streamlit UI
+st.set_page_config(page_title="🔍 Localizador de Desenhos Técnicos Legacy", layout="centered")
+st.title("🔍 Localizador de Desenhos Técnicos Legacy")
+
+if "drawing_code" not in st.session_state:
+    st.session_state.drawing_code = ""
+
+if "stop_search" not in st.session_state:
+    st.session_state.stop_search = False
+
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+user_input = st.text_input("Digite o código do desenho (ex: 180-570-542):", value=st.session_state.drawing_code)
+debug_mode = st.checkbox("🐛 Ativar Modo Debug", help="Mostrar informações detalhadas da busca")
+
+col1, col2, col3 = st.columns([1, 1, 1])
+
+with col1:
+    if st.button("Buscar desenho", use_container_width=True):
+        if user_input:
+            st.session_state.drawing_code = user_input
+            st.session_state.stop_search = False
+            if not st.session_state.history or st.session_state.history[0] != user_input:
+                if user_input not in st.session_state.history:
+                    st.session_state.history.insert(0, user_input)
+                    if len(st.session_state.history) > 10:
+                        st.session_state.history = st.session_state.history[:10]
+            st.rerun()
+
+with col2:
+    if st.button("Limpar", use_container_width=True):
+        st.session_state.drawing_code = ""
+        st.session_state.stop_search = False
+        st.rerun()
+
+with col3:
+    if st.button("Parar busca", use_container_width=True):
+        st.session_state.stop_search = True
+
+# Histórico de buscas
+if st.session_state.history:
+    with st.expander("📜 Histórico de buscas recentes"):
+        for item in st.session_state.history:
+            cols = st.columns([0.8, 0.2])
+            with cols[0]:
+                if st.button(f"🔄 Buscar novamente: {item}", key=f"hist_{item}"):
+                    st.session_state.drawing_code = item
+                    st.session_state.stop_search = False
+                    st.rerun()
+            with cols[1]:
+                if st.button("🗑️", key=f"del_{item}"):
+                    st.session_state.history.remove(item)
+                    st.rerun()
+
+# Continuação da lógica de busca
+if st.session_state.drawing_code and not st.session_state.stop_search:
+    drawing_code = st.session_state.drawing_code
+    st.subheader(f"🔎 Resultados para: {drawing_code}")
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    try:
+        status_text.text("🌐 Buscando na web...")
+        progress_bar.progress(25)
+        urls, latest_revision = get_latest_drawing_urls(
+            "http://rio1web.net.fmcti.com/ipd/fmc_released_legacy/Desenhos/Produtos",
+            drawing_code
+        )
+        if urls:
+            st.success(f"✅ Web - Revisão mais recente: {latest_revision}")
+            for url in urls:
+                st.write(url)
+            if len(urls) > 1:
+                zip_buffer = create_zip_from_urls(urls)
+                st.download_button(
+                    label=f"📦 Baixar todas as páginas (Web) - Revisão {latest_revision}",
+                    data=zip_buffer,
+                    file_name=f"{drawing_code}-web-{latest_revision}.zip"
+                )
+            progress_bar.progress(100)
+            status_text.text("✅ Busca concluída com sucesso!")
+    except Exception as e:
+        st.warning(f"⚠️ Web: {e}")
+        progress_bar.progress(33)
+
+    if not st.session_state.stop_search:
+        try:
+            status_text.text("📁 Buscando na rede local (Desativados)...")
+            progress_bar.progress(50)
+            path = r"\\rio-data-srv\arquivo\Desativados"
+            files = get_latest_drawing_paths(path, drawing_code, format_drawing_code_desativados)
+            if files:
+                grouped = group_files_by_version_and_page(files)
+                latest = sorted(grouped.keys(), reverse=True)[0]
+                st.success(f"✅ Desativados - Versão mais recente: {latest}")
+                for page, group in grouped[latest].items():
+                    for file_path in group:
+                        with open(file_path, "rb") as file:
+                            st.download_button(
+                                label=f"📥 Baixar {os.path.basename(file_path)}",
+                                data=file,
+                                file_name=os.path.basename(file_path)
+                            )
+                    if len(group) > 1:
+                        zip_buffer = create_zip(group)
+                        st.download_button(
+                            label=f"📦 Baixar todas as páginas - Página {page} - Versão {latest}",
+                            data=zip_buffer,
+                            file_name=f"{drawing_code}-versao-{latest}.zip"
+                        )
+                progress_bar.progress(100)
+                status_text.text("✅ Busca concluída com sucesso!")
+                st.session_state.stop_search = True
+            else:
+                progress_bar.progress(66)
+        except Exception as e:
+            st.warning(f"⚠️ Desativados: {e}")
+            progress_bar.progress(66)
+
+    if not st.session_state.stop_search:
+        try:
+            status_text.text("📁 Buscando na rede local (FMC)...")
+            progress_bar.progress(75)
+            path = r"\\rio-data-srv\arquivo\FMC"
+            files = get_latest_drawing_paths(path, drawing_code, format_drawing_code_fmc)
+            if files:
+                grouped = group_files_by_version_and_page(files)
+                latest = sorted(grouped.keys(), reverse=True)[0]
+                st.success(f"✅ FMC - Versão mais recente: {latest}")
+                for page, group in grouped[latest].items():
+                    for file_path in group:
+                        with open(file_path, "rb") as file:
+                            st.download_button(
+                                label=f"📥 Baixar {os.path.basename(file_path)}",
+                                data=file,
+                                file_name=os.path.basename(file_path)
+                            )
+                    if len(group) > 1:
+                        zip_buffer = create_zip(group)
+                        st.download_button(
+                            label=f"📦 Baixar todas as páginas - Página {page} - Versão {latest}",
+                            data=zip_buffer,
+                            file_name=f"{drawing_code}-versao-{latest}.zip"
+                        )
+                progress_bar.progress(100)
+                status_text.text("✅ Busca concluída com sucesso!")
+                st.session_state.stop_search = True
+            else:
+                progress_bar.progress(100)
+                status_text.text("❌ Nenhum arquivo encontrado em nenhum local")
+        except Exception as e:
+            st.warning(f"⚠️ FMC: {e}")
+            progress_bar.progress(100)
+            status_text.text("❌ Todas as fontes de busca esgotadas")
+
