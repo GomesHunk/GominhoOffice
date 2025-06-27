@@ -1,0 +1,70 @@
+import gradio as gr
+import pytesseract
+from PIL import Image, ImageDraw
+import fitz  # PyMuPDF
+import io
+import re
+
+# Caminho para o executável do Tesseract
+pytesseract.pytesseract.tesseract_cmd = r"C:\Users\gomesg1\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
+
+def highlight_matches(image, search_term):
+    data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+    draw = ImageDraw.Draw(image)
+    for i, word in enumerate(data["text"]):
+        if re.search(search_term, word, re.IGNORECASE):
+            x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
+            padding = 4  # pixels extras ao redor da palavra
+            draw.rectangle([x - padding, y - padding, x + w + padding, y + h + padding], outline="red", width=4)
+
+    return image
+
+def ocr_pdf_with_highlight(file_path, search_term):
+    with open(file_path, "rb") as f:
+        pdf_bytes = f.read()
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    result_images = []
+    page_numbers = []
+
+    for i, page in enumerate(doc):
+        pix = page.get_pixmap(dpi=120)
+        img = Image.open(io.BytesIO(pix.tobytes("png")))
+        text = pytesseract.image_to_string(img)
+
+        if re.search(search_term, text, re.IGNORECASE):
+            highlighted = highlight_matches(img, search_term)
+            result_images.append(highlighted)
+            page_numbers.append(i + 1)
+
+    return result_images, page_numbers
+
+with gr.Blocks() as demo:
+    gr.Markdown("## 🔍 Leitor de Documentos com OCR e Destaque de Palavras (Tesseract + Gradio)")
+
+    file_input = gr.File(label="📄 Envie um PDF", type="filepath")
+    search_input = gr.Textbox(label="🔎 Palavra para buscar", placeholder="Digite a palavra...", visible=False)
+    search_button = gr.Button("Buscar", visible=False)
+    result_gallery = gr.Gallery(label="📚 Páginas com a palavra destacada", visible=False)
+    status_text = gr.Textbox(label="Status", interactive=False)
+
+    def enable_search(file_path):
+        if file_path and file_path.lower().endswith(".pdf"):
+            return gr.update(visible=True), gr.update(visible=True), gr.update(value="Arquivo carregado. Pronto para buscar.")
+        else:
+            return gr.update(visible=False), gr.update(visible=False), gr.update(value="Por favor, envie um arquivo PDF válido.")
+
+    file_input.change(fn=enable_search, inputs=file_input, outputs=[search_input, search_button, status_text])
+
+    def search_and_highlight(file_path, search_term):
+        status = "Lendo documento e procurando..."
+        images, pages = ocr_pdf_with_highlight(file_path, search_term)
+        if images:
+            page_info = f"Encontrado em {len(pages)} página(s): {pages}"
+            return page_info, gr.update(visible=True, value=images)
+        else:
+            return f"Nenhuma ocorrência da palavra '{search_term}' foi encontrada.", gr.update(visible=False, value=None)
+
+    search_button.click(fn=search_and_highlight, inputs=[file_input, search_input], outputs=[status_text, result_gallery])
+
+    demo.launch()
