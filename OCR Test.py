@@ -1,0 +1,120 @@
+import gradio as gr
+import pytesseract
+from PIL import Image, ImageDraw
+import fitz  # PyMuPDF
+import io
+import os
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Caminho do Tesseract
+tesseract_path = os.path.join(os.path.dirname(__file__), "tesseract", "tesseract.exe")
+pytesseract.pytesseract.tesseract_cmd = tesseract_path
+
+# Configurações visuais
+PADDING = 4
+BORDER_WIDTH = 4
+DPI = 100  # Qualidade da renderização do PDF
+
+def normalize_search_term(term_raw):
+    keywords = re.split(r"[ /]+", term_raw.strip())
+    keywords = [re.escape(k) for k in keywords if k]
+    if not keywords:
+        return r"$^", []
+    return r"(" + "|".join(keywords) + r")", keywords
+
+def process_page(page_index, page, search_term):
+    pix = page.get_pixmap(dpi=DPI)
+    img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+    data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+
+    found = False
+    draw = ImageDraw.Draw(img)
+    for i, word in enumerate(data["text"]):
+        if re.search(search_term, word, re.IGNORECASE):
+            found = True
+            x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
+            draw.rectangle(
+                [x - PADDING, y - PADDING, x + w + PADDING, y + h + PADDING],
+                outline="red",
+                width=BORDER_WIDTH
+            )
+
+    return (page_index + 1, img) if found else None
+
+def ocr_pdf_with_highlight(file_path, search_term, progress=gr.Progress()):
+    with open(file_path, "rb") as f:
+        pdf_bytes = f.read()
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    results = []
+
+    with ThreadPoolExecutor() as executor:
+        futures = {executor.submit(process_page, i, page, search_term): i for i, page in enumerate(doc)}
+        total = len(futures)
+
+        for count, future in enumerate(as_completed(futures)):
+            result = future.result()
+            progress((count + 1) / total, desc=f"🔎 Página {futures[future]+1}/{total}")
+            if result:
+                results.append(result)
+
+    results.sort(key=lambda x: x[0])
+    if results:
+        # Empacota como (imagem, legenda) para exibir o número da página
+        gallery_items = [(img, f"📄 Página {pg}") for pg, img in results]
+        return gallery_items, [pg for pg, _ in results]
+    else:
+        return [], []
+
+# Interface Gradio com tema escuro
+with gr.Blocks(theme=gr.themes.Base()) as demo:
+    gr.Markdown("## 🔍 Leitor de Documentos com OCR e Destaque de Palavras")
+
+    file_input = gr.File(label="📄 Envie um PDF", type="filepath")
+    search_input = gr.Textbox(
+        label="🔎 Palavras para buscar (separe por espaço ou /)",
+        placeholder="Ex: cliente contrato rescisão",
+        visible=False
+    )
+    search_button = gr.Button("Buscar", visible=False)
+    result_gallery = gr.Gallery(label="📚 Páginas com destaque", visible=False, columns=2, height="auto")
+    status_text = gr.Textbox(label="Status", interactive=False)
+    preview_text = gr.Textbox(label="🔍 Palavras interpretadas", interactive=False, visible=False)
+
+    def enable_search(file_path):
+        if file_path and file_path.lower().endswith(".pdf"):
+            return (
+                gr.update(visible=True),
+                gr.update(visible=True),
+                gr.update(value="📥 Arquivo carregado. Pronto para buscar."),
+                gr.update(visible=False)
+            )
+        else:
+            return (
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(value="⚠️ Por favor, envie um arquivo PDF válido."),
+                gr.update(visible=False)
+            )
+
+    file_input.change(fn=enable_search, inputs=file_input, outputs=[search_input, search_button, status_text, preview_text])
+
+    def search_and_highlight(file_path, search_term_raw):
+        if not search_term_raw.strip():
+            return "❗ Digite ao menos uma palavra para buscar.", gr.update(visible=False), gr.update(visible=False)
+        
+        regex_term, keywords = normalize_search_term(search_term_raw)
+        preview = "🔎 Palavras a buscar: " + ", ".join(keywords)
+        status = "⏳ Processando o documento..."
+        gallery_items, pages = ocr_pdf_with_highlight(file_path, regex_term)
+        
+        if gallery_items:
+            msg = f"✅ Encontrado em {len(pages)} página(s): {pages}"
+            return msg, gr.update(visible=True, value=gallery_items), gr.update(value=preview, visible=True)
+        else:
+            return f"❌ Nenhuma ocorrência de '{search_term_raw}' foi encontrada.", gr.update(visible=False), gr.update(value=preview, visible=True)
+
+    search_button.click(fn=search_and_highlight, inputs=[file_input, search_input], outputs=[status_text, result_gallery, preview_text])
+
+    demo.launch()
